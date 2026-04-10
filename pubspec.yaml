@@ -1,0 +1,57 @@
+name: bus_app
+description: Smart Bus Tracking & Management System
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.5.1
+
+  # Navigation
+  go_router: ^14.2.7
+
+  # HTTP & API
+  dio: ^5.7.0
+
+  # Local Storage
+  shared_preferences: ^2.3.2
+
+  # Maps & Location
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.0
+  geolocator: ^13.0.1
+  permission_handler: ^11.3.1
+
+  # QR
+  mobile_scanner: ^6.0.0
+  qr_flutter: ^4.1.0
+
+# Audio
+  audioplayers: ^6.0.0
+
+  # Local Notifications
+  flutter_local_notifications: ^17.2.1
+  # UI
+  iconsax: ^0.0.8
+  cached_network_image: ^3.4.1
+
+  # Utils
+  intl: ^0.19.0
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  image_picker: ^1.0.7
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/sounds/mixkit-happy-bells-notification-937.wav
