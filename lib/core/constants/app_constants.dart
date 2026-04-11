@@ -12,8 +12,7 @@ import 'dart:io';
 class AppConstants {
   // ═══ غيّر هالرابط لما تنشر على سيرفر سحابي ═══
   // مثال: 'https://your-app.railway.app/api'
-  static const String _productionUrl = '';
-
+static const String _productionUrl = 'https://sfre-backend-b850.onrender.com/api';
   static String get baseUrl {
     // إذا في رابط إنتاج — استخدمو
     if (_productionUrl.isNotEmpty) return _productionUrl;

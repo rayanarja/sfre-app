@@ -233,10 +233,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     final tagAr = plan['tag_ar'] ?? '';
 
     // لون الوسم حسب النوع
-    Color tagColor = AppColors.success;
-    if (tag == 'fastest') tagColor = const Color(0xFF1976D2);
-    else if (tag == 'comfort') tagColor = const Color(0xFFFA8C16);
-    else if (tag == 'alternative') tagColor = AppColors.textSecondary;
+    Color tagColor = const Color(0xFF1976D2); // أزرق = الأفضل كوقت
+    if (tag == 'comfort') tagColor = const Color(0xFFFA8C16); // برتقالي = الأفضل كراحة
 
     return Container(
       margin: EdgeInsets.only(bottom: 14),
