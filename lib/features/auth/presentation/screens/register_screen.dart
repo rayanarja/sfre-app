@@ -37,7 +37,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (!mounted) return;
-      context.go('/subscription');
+      context.go('/passenger');
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);

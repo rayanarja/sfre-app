@@ -3,9 +3,11 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:async';
 import '../network/api_client.dart';
-
+import 'package:flutter/services.dart';
+import 'dart:typed_data';
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
+  static final _vibrationPattern = Int64List.fromList([0, 500, 200, 500]);
   factory NotificationService() => _instance;
   NotificationService._internal();
 
@@ -39,22 +41,36 @@ class NotificationService {
   }
 
   Future<void> showNotification({required String title, required String body}) async {
-    if (!_initialized) await init();
-    try {
-      const androidDetails = AndroidNotificationDetails(
-        'bus_app_channel', 'إشعارات الباصات',
-        channelDescription: 'إشعارات نظام الباصات',
-        importance: Importance.high, priority: Priority.high,
-        playSound: true, enableVibration: true,
-        icon: '@mipmap/ic_launcher',
-      );
-      const iosDetails = DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true);
-      await _localNotifications.show(
-        DateTime.now().millisecondsSinceEpoch ~/ 1000, title, body,
-        const NotificationDetails(android: androidDetails, iOS: iosDetails),
-      );
-    } catch (_) {}
-  }
+  if (!_initialized) await init();
+  try {
+    // 👇 لاحظ: حذفنا const من هنا
+    final androidDetails = AndroidNotificationDetails(
+      'bus_app_channel_v2',
+      'إشعارات الباصات',
+      channelDescription: 'إشعارات نظام الباصات',
+      importance: Importance.max,
+      priority: Priority.max,
+      playSound: true,
+      enableVibration: true,
+      vibrationPattern: _vibrationPattern, // 👈 نستخدم المتغير الثابت
+      icon: '@mipmap/ic_launcher',
+      fullScreenIntent: true,
+    );
+    
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true, 
+      presentBadge: true, 
+      presentSound: true
+    );
+    
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000, 
+      title, 
+      body,
+      NotificationDetails(android: androidDetails, iOS: iosDetails),
+    );
+  } catch (_) {}
+}
 
   Future<void> playArrivalSound() async {
     try {
@@ -65,10 +81,18 @@ class NotificationService {
 
   /// صوت + إشعار معاً
   Future<void> alertUser({required String title, required String body}) async {
-    await playArrivalSound();
-    await Future.delayed(const Duration(milliseconds: 200));
-    await showNotification(title: title, body: body);
-  }
+  // شغلي الصوت
+  await playArrivalSound();
+  
+  // طنطنة يدوية لما التطبيق مفتوح
+  HapticFeedback.heavyImpact();
+  await Future.delayed(const Duration(milliseconds: 300));
+  HapticFeedback.heavyImpact();
+  await Future.delayed(const Duration(milliseconds: 300));
+  HapticFeedback.heavyImpact();
+  
+  await showNotification(title: title, body: body);
+}
 
   Future<bool> requestPermission() async {
     LocationPermission p = await Geolocator.checkPermission();
