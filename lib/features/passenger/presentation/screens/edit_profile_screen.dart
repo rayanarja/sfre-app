@@ -78,7 +78,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'username': updatedUser.username,
         'email': updatedUser.email,
         'phone': updatedUser.phone,
-        'role': updatedUser.role,
+        //'role': updatedUser.role,
       }));
 
       if (!mounted) return;
@@ -188,7 +188,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     return 'الرجاء إدخال اسم المستخدم';
                   }
                   if (value.length < 3) {
-                    return 'اسم المستخدم لازم يكون 3 أحرف على الأقل';
+                    return 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل';
                   }
                   return null;
                 },
@@ -256,7 +256,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 validator: (value) {
                   if (value == null || value.isEmpty) return null;
                   if (value.length < 6) {
-                    return 'كلمة المرور لازم تكون 6 أحرف على الأقل';
+                    return 'كلمة المرور يجب أن  تكون 6 أحرف على الأقل';
                   }
                   return null;
                 },
@@ -266,6 +266,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
               ElevatedButton(
                 onPressed: _isLoading ? null : _saveProfile,
+
                 child: _isLoading
                     ? SizedBox(
                         height: 20,

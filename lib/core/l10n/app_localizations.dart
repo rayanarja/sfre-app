@@ -10,7 +10,7 @@ class AppLocalizations {
 
   static const Map<String, Map<String, String>> _translations = {
     // عام
-    'app_name': {'ar': 'باصاتي', 'en': 'My Bus'},
+    'app_name': {'ar': 'SFRE', 'en': 'My Bus'},
     'ok': {'ar': 'موافق', 'en': 'OK'},
     'cancel': {'ar': 'إلغاء', 'en': 'Cancel'},
     'save': {'ar': 'حفظ', 'en': 'Save'},
@@ -52,7 +52,7 @@ class AppLocalizations {
     'hello_user': {'ar': 'أهلاً،', 'en': 'Hello,'},
     'where_to_go': {'ar': 'إلى أين تريد الذهاب؟', 'en': 'Where do you want to go?'},
     'search_destination': {'ar': 'ابحث عن وجهتك...', 'en': 'Search your destination...'},
-    'search_hint': {'ar': 'وين بدك تروح؟', 'en': 'Where are you going?'},
+    'search_hint': {'ar': 'حدد وجهتك ؟', 'en': 'Where are you going?'},
     'scan_qr': {'ar': 'مسح QR', 'en': 'Scan QR'},
     'my_trips': {'ar': 'رحلاتي', 'en': 'My Trips'},
     'the_map': {'ar': 'الخريطة', 'en': 'Map'},
@@ -68,8 +68,8 @@ class AppLocalizations {
     'your_location': {'ar': 'موقعك الحالي', 'en': 'Your Location'},
     'detecting_location': {'ar': 'جاري تحديد الموقع...', 'en': 'Detecting location...'},
     'search_empty': {'ar': 'ابحث عن وجهتك', 'en': 'Search your destination'},
-    'search_empty_desc': {'ar': 'اكتب اسم المكان وبنلاقيلك الطريق', 'en': 'Type the place name'},
-    'no_routes_found': {'ar': 'ما لقينا خطوط توصلك', 'en': 'No routes found'},
+    'search_empty_desc': {'ar': 'اكتب اسم المكان الذي تريد الذهاب اليه  ', 'en': 'Type the place name'},
+    'no_routes_found': {'ar': 'لا يوجد  خطوط تصل إلى وجهتك', 'en': 'No routes found'},
     'try_another': {'ar': 'جرّب اسم ثاني', 'en': 'Try another name'},
     'direct_trip': {'ar': 'رحلة مباشرة', 'en': 'Direct Trip'},
     'transfer_trip': {'ar': 'رحلة بتحويل', 'en': 'Transfer Trip'},
@@ -82,14 +82,14 @@ class AppLocalizations {
     'stations_minutes': {'ar': '{s} محطات \u2022 {m} دقيقة', 'en': '{s} stops \u2022 {m} min'},
     'active_buses': {'ar': '{n} باص نشط', 'en': '{n} active'},
     'walk_meters_min': {'ar': '{m} متر • {n} دقيقة مشي', 'en': '{m}m • {n} min walk'},
-    'cant_detect_location': {'ar': 'ما قدرنا نحدد موقعك', 'en': 'Could not detect location'},
-    'no_buses_on_route': {'ar': 'ما في باصات نشطة حالياً على هالخط', 'en': 'No active buses on this route'},
+    'cant_detect_location': {'ar': 'لم نستطع تحديد موقعك', 'en': 'Could not detect location'},
+    'no_buses_on_route': {'ar': 'لا يوجد باصات نشطة حالياً على هذا الخط', 'en': 'No active buses on this route'},
     'bus_eta': {'ar': 'أقرب باص بعد ~{m} دقيقة', 'en': 'Next bus in ~{m} min'},
     'guide_me': {'ar': 'وجّهني', 'en': 'Navigate'},
 
     // الاشتراك
     'my_subscription': {'ar': 'اشتراكي', 'en': 'My Subscription'},
-    'no_subscription': {'ar': 'ما عندك اشتراك فعّال', 'en': 'No active subscription'},
+    'no_subscription': {'ar': 'لا يوجد اشتراك فعّال', 'en': 'No active subscription'},
     'buy_from_pos': {'ar': 'اشترِ من أقرب نقطة بيع', 'en': 'Buy from nearest POS'},
     'nearest_pos': {'ar': 'أقرب نقاط البيع', 'en': 'Nearest POS'},
     'trips_remaining': {'ar': 'الرحلات المتبقية', 'en': 'Remaining'},

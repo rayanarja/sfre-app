@@ -207,7 +207,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         title: Text(AppLocalizations.current.tr('delete_confirm'),
             textDirection: TextDirection.rtl),
         content: Text(
-          'رح تُحذف من المفضلة',
+          'ستُحذف من المفضلة',
           textDirection: TextDirection.rtl,
           style: TextStyle(color: AppColors.textSecondary),
         ),
@@ -252,7 +252,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             ),
             const SizedBox(height: 20),
             const Text(
-              'ما في وجهات مفضلة بعد',
+              'لا يوجد وجهات مفضلة بعد',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -261,7 +261,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'ابحث عن وجهة واضغط ⭐ لحفظها هون',
+              'ابحث عن وجهة واضغط ⭐ لحفظها هنا',
               style: TextStyle(
                 color: AppColors.textSecondary,
                 fontSize: 14,
@@ -308,7 +308,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'رح يطلعلك الخطوط المتاحة',
+            ' ستظهرلك الخطوط المتاحة',
             style: TextStyle(
               color: AppColors.textHint,
               fontSize: 13,
@@ -328,7 +328,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
               size: 60, color: AppColors.error.withOpacity(0.3)),
           const SizedBox(height: 16),
           Text(
-            'ما في خطوط لـ "$_selectedFavorite"',
+            'لا يوجد خطوط لـ "$_selectedFavorite"',
             style: const TextStyle(
               color: AppColors.textSecondary,
               fontSize: 15,

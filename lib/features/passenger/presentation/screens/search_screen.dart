@@ -83,7 +83,7 @@ class _SearchScreenState extends State<SearchScreen> {
   void _toggleNotification(Map<String, dynamic> route) async {
     final closest = route['closest_station'];
     if (closest == null) {
-      _showSnack('ما في إحداثيات لهالمحطة', AppColors.error);
+      _showSnack('لا يوجد إحداثيات لهذه المحطة', AppColors.error);
       return;
     }
 
@@ -117,7 +117,7 @@ class _SearchScreenState extends State<SearchScreen> {
           'lng': station['lng'],
         });
         setState(() {});
-        if (mounted) _showSnack('✅ رح تنبهك لما تقترب من $stationName', AppColors.success);
+        if (mounted) _showSnack('✅ سيصلك  تنبيه عندما تقترب من $stationName', AppColors.success);
       }
     } catch (e) {
       // ignore
@@ -192,7 +192,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   const Icon(Icons.location_on, color: AppColors.success, size: 18),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text('جاري تتبع: ${_notificationService.targetStation?['name']}',
+                    child: Text('جار التتبع: ${_notificationService.targetStation?['name']}',
                         style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.w600, fontSize: 13)),
                   ),
                   GestureDetector(
@@ -240,9 +240,9 @@ class _SearchScreenState extends State<SearchScreen> {
         children: [
           Icon(Icons.search_off_outlined, size: 80, color: AppColors.error.withOpacity(0.3)),
           const SizedBox(height: 16),
-          const Text('ما في نتائج', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          const Text('لا يوجد نتائج', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
           const SizedBox(height: 8),
-          const Text('جرب تبحث بكلمة ثانية', style: TextStyle(color: AppColors.textHint, fontSize: 14)),
+          const Text('حاول أن  تبحث بكلمة ثانية', style: TextStyle(color: AppColors.textHint, fontSize: 14)),
         ],
       ),
     );

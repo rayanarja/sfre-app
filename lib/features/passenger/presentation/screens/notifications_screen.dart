@@ -216,7 +216,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               size: 80, color: AppColors.primary.withOpacity(0.3)),
           const SizedBox(height: 16),
           const Text(
-            'ما في إشعارات جديدة',
+            ' لا يوجد إشعارات جديدة',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,

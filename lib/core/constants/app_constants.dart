@@ -22,7 +22,7 @@ static const String _productionUrl = 'https://sfre-backend-b850.onrender.com/api
       if (isEmulator) {
         return 'http://10.0.2.2:5000/api';
       }
-      return 'http://192.168.43.36:5000/api';
+      return 'http://192.168.1.8:5000/api';
     }
     return 'http://localhost:5000/api';
   }

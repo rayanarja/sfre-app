@@ -132,7 +132,7 @@ class _LostItemScreenState extends State<LostItemScreen> {
 
       if (!mounted) return;
       _showSnack(
-        _isDriver ? '✅ تم الإبلاغ — سيتم إشعار الأدمن' : '✅ تم إرسال البلاغ — سنتواصل معك',
+        _isDriver ? '✅ تم الإبلاغ — سيتم إشعار الإدارة' : '✅ تم إرسال البلاغ — سنتواصل معك',
         AppColors.success,
       );
       await Future.delayed(const Duration(seconds: 1));
@@ -195,8 +195,8 @@ class _LostItemScreenState extends State<LostItemScreen> {
                           Expanded(
                             child: Text(
                               _isDriver
-                                  ? 'لقيت غرض بالباص؟ بلّغ هون وسنشعر الأدمن'
-                                  : 'نسيت غرض بالباص؟ بلّغنا وسنحاول إيجاده',
+                                  ? 'عثرت على شيء في الباص؟ بلّغ هنا وسنبلغ الإدارة '
+                                  : 'نسيت شيء في الباص؟ بلّغنا وسنحاول إيجاده',
                               style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
                               textAlign: TextAlign.right,
                             ),
@@ -209,7 +209,7 @@ class _LostItemScreenState extends State<LostItemScreen> {
 
                     // اختيار الباص
                     Text(
-                      _isDriver ? 'الباص يلي لقيت فيه الغرض *' : 'الباص يلي كنت فيه *',
+                      _isDriver ? 'الباص الذي وجدت فيه الغرض *' : 'الباص الذي كنت فيه *',
                       style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary, fontSize: 15),
                     ),
                     SizedBox(height: 8),
@@ -281,7 +281,7 @@ class _LostItemScreenState extends State<LostItemScreen> {
 
                     // وصف الغرض
                     Text(
-                      _isDriver ? 'وصف الغرض يلي لقيتو *' : 'وصف الغرض المفقود *',
+                      _isDriver ? 'وصف الغرض الذي عثرت عليه  *' : 'وصف الغرض المفقود *',
                       style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary, fontSize: 15),
                     ),
                     const SizedBox(height: 8),
@@ -302,7 +302,7 @@ class _LostItemScreenState extends State<LostItemScreen> {
 
                     // المكان
                     Text(
-                      _isDriver ? 'وين لقيتو بالباص؟ (اختياري)' : 'وين تقريباً نسيتو؟ (اختياري)',
+                      _isDriver ? 'أين وجدته في الباص؟ (اختياري)' : 'أين فقدته تقريباً ؟ (اختياري)',
                       style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary, fontSize: 15),
                     ),
                     const SizedBox(height: 8),

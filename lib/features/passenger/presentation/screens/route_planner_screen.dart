@@ -5,14 +5,20 @@ import 'dart:async';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/l10n/app_localizations.dart';
+import '../../../../core/services/notification_service.dart';
 
+// ═══════════════════════════════════════════════════════
+// RoutePlannerScreen — خطط رحلتك
+// ═══════════════════════════════════════════════════════
 class RoutePlannerScreen extends StatefulWidget {
   const RoutePlannerScreen({super.key});
   @override
   State<RoutePlannerScreen> createState() => _RoutePlannerScreenState();
 }
 
-class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
+class _RoutePlannerScreenState extends State<RoutePlannerScreen>
+    with TickerProviderStateMixin {
+  // ── حقول البحث
   final _controller = TextEditingController();
   bool _isLoading = false;
   Map<String, dynamic>? _result;
@@ -20,28 +26,62 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   List<Map<String, dynamic>> _suggestions = [];
   Timer? _debounce;
 
-  @override
-  void initState() { super.initState(); _getLocation(); }
+  // ── حالة الرحلة النشطة
+  bool _isTripActive = false;
+  Map<String, dynamic>? _activePlan;
+  int _activeLegIndex = 0;
+  StreamSubscription<Position>? _tripGpsSub;
+  final List<bool> _legNotified = [];
 
+  // ── انيميشن للكارد النشط
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _getLocation();
+    NotificationService().init();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 1.0, end: 1.04).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  // ══════════════════════════
+  // الموقع
+  // ══════════════════════════
   Future<void> _getLocation() async {
     try {
       LocationPermission p = await Geolocator.checkPermission();
       if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
       if (p == LocationPermission.deniedForever) return;
-      _position = await Geolocator.getCurrentPosition(
+      final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      setState(() {});
+      if (mounted) setState(() => _position = pos);
     } catch (_) {}
   }
 
+  // ══════════════════════════
+  // الاقتراحات
+  // ══════════════════════════
   void _onTextChanged(String text) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () async {
-      if (text.trim().length < 2) { setState(() => _suggestions = []); return; }
+      if (text.trim().length < 2) {
+        if (mounted) setState(() => _suggestions = []);
+        return;
+      }
       try {
-        final api = ApiClient();
-        final res = await api.dio.get('/stations/hybrid-suggestions', queryParameters: {'q': text.trim()});
+        final res = await ApiClient().dio.get(
+          '/stations/hybrid-suggestions',
+          queryParameters: {'q': text.trim()},
+        );
+        if (!mounted) return;
         final data = res.data;
         if (data is List) {
           setState(() {
@@ -55,149 +95,496 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     });
   }
 
+  // ══════════════════════════
+  // البحث
+  // ══════════════════════════
   Future<void> _search({String? override, double? destLat, double? destLng}) async {
     final q = override ?? _controller.text.trim();
     if (q.isEmpty) return;
-    if (_position == null) { _snack(AppLocalizations.current.tr('cant_detect_location'), Colors.red); return; }
-    setState(() { _isLoading = true; _result = null; _suggestions = []; });
+    if (_position == null) {
+      _snack(' لم نستطع تحديد موقعك', Colors.red);
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _result = null;
+      _suggestions = [];
+    });
     FocusScope.of(context).unfocus();
     try {
-      final api = ApiClient();
       final params = <String, dynamic>{
         'destination': q,
         'lat': _position!.latitude,
         'lng': _position!.longitude,
       };
-      // إذا عندنا إحداثيات (بحث بمنطقة) — أرسلها
       if (destLat != null && destLng != null) {
         params['dest_lat'] = destLat;
         params['dest_lng'] = destLng;
       }
-      final res = await api.dio.get('/stations/plan-route-v2', queryParameters: params);
-      setState(() => _result = Map<String, dynamic>.from(res.data));
-    } catch (_) { _snack(AppLocalizations.current.tr('error'), Colors.red); }
-    setState(() => _isLoading = false);
+      final res = await ApiClient().dio.get(
+        '/stations/plan-route-v2',
+        queryParameters: params,
+      );
+      if (mounted) setState(() => _result = Map<String, dynamic>.from(res.data));
+    } catch (_) {
+      _snack('حدث خطأ، حاول مرة ثانية', Colors.red);
+    }
+    if (mounted) setState(() => _isLoading = false);
   }
 
+  // ══════════════════════════════════════════════════════════
+  // بدء الرحلة — تشغيل GPS وإشعارات على كل خطوة
+  // ══════════════════════════════════════════════════════════
+  Future<void> _startTrip(Map<String, dynamic> plan) async {
+    // أوقف أي رحلة سابقة
+    await _stopTrip(silent: true);
+
+    final legs = List<Map<String, dynamic>>.from(plan['legs'] ?? []);
+    if (legs.isEmpty) return;
+
+    // قائمة نقاط المراقبة: كل خطوة فيها إحداثيات وجهة
+    final waypoints = <Map<String, dynamic>>[];
+
+    for (int i = 0; i < legs.length; i++) {
+      final leg = legs[i];
+      final toLat = _toDouble(leg['to_lat']);
+      final toLng = _toDouble(leg['to_lng']);
+      if (toLat == null || toLng == null) continue;
+
+      String notifTitle, notifBody;
+      if (leg['action'] == 'walk' && i == 0) {
+        notifTitle = '🚶 اوصلت للموقف!';
+        notifBody = 'ابحث عن الباص "${_cleanRoute(legs.firstWhere((l) => l['action'] == 'bus', orElse: () => {})['route_name'])}"';
+      } else if (leg['action'] == 'walk' && i < legs.length - 1) {
+        notifTitle = '🔄 وقت التحويل!';
+        notifBody = 'انزل هنا وامشِ ${leg['meters'] ?? ''} متر للباص التاني';
+      } else if (leg['action'] == 'bus') {
+        final nextLegs = legs.sublist(i + 1);
+        final hasTransferAfter = nextLegs.any((l) => l['action'] == 'bus');
+        if (hasTransferAfter) {
+          notifTitle = '⬇️ جهز نفسك للنزول!';
+          notifBody = 'ستصل قريباً لنقطة التحويل في "${leg['to']}"';
+        } else {
+          notifTitle = '📍 وصلت لوجهتك!';
+          notifBody = 'الباص اقترب من "${leg['to']}" — كن مستعدا للنزول';
+        }
+      } else {
+        notifTitle = '🏁 وصلت!';
+        notifBody = 'امشِ ${leg['meters'] ?? ''} متر لوجهتك النهائية';
+      }
+
+      waypoints.add({
+        'lat': toLat,
+        'lng': toLng,
+        'title': notifTitle,
+        'body': notifBody,
+        'leg_index': i,
+        'radius': leg['action'] == 'bus' ? 400.0 : 200.0,
+      });
+    }
+
+    if (waypoints.isEmpty) return;
+
+    setState(() {
+      _isTripActive = true;
+      _activePlan = plan;
+      _activeLegIndex = 0;
+      _legNotified.clear();
+      _legNotified.addAll(List.filled(waypoints.length, false));
+    });
+
+    // إشعار ابتداء الرحلة
+    await NotificationService().showNotification(
+      title: '🚌 بدأت رحلتك!',
+      body: 'اتجه للموقف — سنبلغك عند كل خطوة',
+    );
+
+    // تتبع GPS ومقارنة مع نقاط المراقبة
+    int currentWaypointIdx = 0;
+    _tripGpsSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 30,
+      ),
+    ).listen((Position pos) {
+      if (!_isTripActive || currentWaypointIdx >= waypoints.length) return;
+
+      final wp = waypoints[currentWaypointIdx];
+      final dist = Geolocator.distanceBetween(
+        pos.latitude, pos.longitude,
+        wp['lat'], wp['lng'],
+      );
+
+      if (dist <= (wp['radius'] as double) && !_legNotified[currentWaypointIdx]) {
+        _legNotified[currentWaypointIdx] = true;
+        NotificationService().alertUser(
+          title: wp['title'],
+          body: wp['body'],
+        );
+        if (mounted) {
+          setState(() => _activeLegIndex = (wp['leg_index'] as int) + 1);
+        }
+        currentWaypointIdx++;
+
+        // إذا وصلنا لآخر نقطة — الرحلة انتهت
+        if (currentWaypointIdx >= waypoints.length) {
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) _stopTrip();
+          });
+        }
+      }
+    });
+  }
+
+  Future<void> _stopTrip({bool silent = false}) async {
+    _tripGpsSub?.cancel();
+    _tripGpsSub = null;
+    NotificationService().stopTracking();
+    NotificationService().stopDestinationTracking();
+    if (mounted) {
+      setState(() {
+        _isTripActive = false;
+        _activePlan = null;
+        _activeLegIndex = 0;
+        _legNotified.clear();
+      });
+    }
+    if (!silent) {
+      _snack('تم إيقاف الرحلة', Colors.orange);
+    }
+  }
+
+  // ══════════════════════════
+  // مساعدات
+  // ══════════════════════════
   void _snack(String msg, Color c) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: c, behavior: SnackBarBehavior.floating));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, textDirection: TextDirection.rtl),
+        backgroundColor: c,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
-  String _cleanRoute(String? name) => name?.replaceAll(RegExp(r'[\s\-_]*(ذهاب|إياب|اياب)'), '').trim() ?? '';
+  double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
 
-  // فتح Google Maps للمشي
-  void _openWalkingDirections(double? toLat, double? toLng) {
-    if (toLat == null || toLng == null || _position == null) return;
-    final url = 'https://www.google.com/maps/dir/?api=1&origin=${_position!.latitude},${_position!.longitude}&destination=$toLat,$toLng&travelmode=walking';
+  String _cleanRoute(String? name) =>
+      name?.replaceAll(RegExp(r'[\s\-_]*(ذهاب|إياب|اياب)'), '').trim() ?? '';
+
+  void _openMapsWalk(double? fromLat, double? fromLng, double? toLat, double? toLng) {
+    if (toLat == null || toLng == null) return;
+    final oLat = fromLat ?? _position?.latitude;
+    final oLng = fromLng ?? _position?.longitude;
+    if (oLat == null || oLng == null) return;
+    final url =
+        'https://www.google.com/maps/dir/?api=1&origin=$oLat,$oLng&destination=$toLat,$toLng&travelmode=walking';
     launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 
   @override
-  void dispose() { _controller.dispose(); _debounce?.cancel(); super.dispose(); }
+  void dispose() {
+    _controller.dispose();
+    _debounce?.cancel();
+    _pulseController.dispose();
+    _tripGpsSub?.cancel();
+    super.dispose();
+  }
 
+  // ══════════════════════════════════════════
+  // build
+  // ══════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
-    final l = AppLocalizations.current;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(title: Text(l.tr('search_title')), backgroundColor: AppColors.primary, foregroundColor: Colors.white, centerTitle: true),
+      appBar: AppBar(
+        title: const Text('خطّط رحلتك'),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        centerTitle: true,
+        actions: [
+          if (_isTripActive)
+            IconButton(
+              icon: const Icon(Icons.stop_circle_outlined),
+              tooltip: 'إيقاف الرحلة',
+              onPressed: _stopTrip,
+            ),
+        ],
+      ),
       body: Column(children: [
-        Container(
-          padding: EdgeInsets.all(16), color: Theme.of(context).cardColor,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Row(textDirection: TextDirection.rtl, children: [
-              Container(width: 32, height: 32, decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.my_location, color: Colors.blue, size: 18)),
-              const SizedBox(width: 10),
-              Text(_position != null ? '${l.tr("your_location")} ✅' : l.tr('detecting_location'),
-                style: TextStyle(color: _position != null ? AppColors.success : AppColors.textSecondary, fontSize: 13)),
-            ]),
-            SizedBox(height: 12),
-            Row(textDirection: TextDirection.rtl, children: [
-              Container(width: 32, height: 32, decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: Icon(Icons.location_on, color: Colors.red, size: 18)),
-              SizedBox(width: 10),
-              Expanded(child: TextField(
-                controller: _controller, textDirection: TextDirection.rtl,
-                onChanged: _onTextChanged, onSubmitted: (_) => _search(),
-                decoration: InputDecoration(
-                  hintText: l.tr('search_hint'), hintStyle: TextStyle(fontSize: 14),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Theme.of(context).dividerColor)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  suffixIcon: IconButton(icon: Icon(Icons.search, color: AppColors.primary), onPressed: () => _search()),
-                ),
-              )),
-            ]),
-            // اقتراحات (محطات + أماكن)
-            if (_suggestions.isNotEmpty)
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 250),
-                child: Container(
-                  margin: EdgeInsets.only(top: 4),
-                  decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Theme.of(context).dividerColor)),
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: _suggestions.map((item) {
-                      final name = item['name'] ?? '';
-                      final isPlace = item['type'] == 'place';
-                      final placeLat = item['lat'];
-                      final placeLng = item['lng'];
-                      return InkWell(
-                  onTap: () {
-                    _controller.text = name;
-                    setState(() => _suggestions = []);
-                    if (isPlace && placeLat != null && placeLng != null) {
-                      _search(override: name, destLat: (placeLat is int ? placeLat.toDouble() : placeLat), destLng: (placeLng is int ? placeLng.toDouble() : placeLng));
-                    } else {
-                      _search(override: name);
-                    }
-                  },
-                  child: Container(width: double.infinity, padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.3)))),
-                    child: Row(textDirection: TextDirection.rtl, children: [
-                      Icon(isPlace ? Icons.place : Icons.directions_bus_outlined, size: 18,
-                        color: isPlace ? Colors.red : AppColors.primary),
-                      SizedBox(width: 8),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                        Text(name, style: TextStyle(fontSize: 14, color: Theme.of(context).textTheme.bodyLarge?.color)),
-                        if (isPlace) Text('منطقة من الخريطة', style: TextStyle(fontSize: 10, color: AppColors.textHint)),
-                      ])),
-                    ])),
-                ); }).toList()),
-              ),
-              ),
-          ]),
+        // ── بانر الرحلة النشطة ──
+        if (_isTripActive && _activePlan != null) _buildActiveTripBanner(isDark),
+
+        // ── حقل البحث ──
+        _buildSearchHeader(isDark),
+
+        // ── نتائج ──
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _result == null
+                  ? _buildEmpty()
+                  : _buildResults(isDark),
         ),
-        Expanded(child: _isLoading ? const Center(child: CircularProgressIndicator())
-          : _result == null ? _buildEmpty(l) : _buildResults(l, isDark)),
       ]),
     );
   }
 
-  Widget _buildEmpty(AppLocalizations l) => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-    Icon(Icons.search, size: 70, color: AppColors.primary.withOpacity(0.2)),
-    const SizedBox(height: 12),
-    Text(l.tr('search_empty'), style: const TextStyle(color: AppColors.textSecondary, fontSize: 16, fontWeight: FontWeight.w500)),
-    const SizedBox(height: 4),
-    Text(l.tr('search_empty_desc'), style: const TextStyle(color: AppColors.textHint, fontSize: 13), textAlign: TextAlign.center),
-  ]));
+  // ══════════════════════════════════════════
+  // بانر الرحلة النشطة (يظهر في الأعلى)
+  // ══════════════════════════════════════════
+  Widget _buildActiveTripBanner(bool isDark) {
+    final legs = List<Map<String, dynamic>>.from(_activePlan?['legs'] ?? []);
+    final currentLeg = _activeLegIndex < legs.length ? legs[_activeLegIndex] : null;
 
-  Widget _buildResults(AppLocalizations l, bool isDark) {
+    return AnimatedBuilder(
+      animation: _pulseAnim,
+      builder: (ctx, child) => Transform.scale(scale: _pulseAnim.value, child: child),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
+          ),
+        ),
+        child: Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(19),
+              ),
+              child: const Icon(Icons.navigation, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                const Text(
+                  '🚌 رحلة نشطة',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  currentLeg != null
+                      ? (currentLeg['action'] == 'walk'
+                          ? 'امشِ نحو: ${currentLeg['to'] ?? ''}'
+                          : 'اركب خط: ${_cleanRoute(currentLeg['route_name'])} باتجاه ${currentLeg['to'] ?? ''}')
+                      : '✅ وصلت لوجهتك!',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _stopTrip,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white38),
+                ),
+                child: const Text('إيقاف', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════
+  // رأس البحث
+  // ══════════════════════════════════════════
+  Widget _buildSearchHeader(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: Theme.of(context).cardColor,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        // موقعك
+        Row(textDirection: TextDirection.rtl, children: [
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.my_location, color: Colors.blue, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            _position != null ? 'موقعك الحالي ✅' : 'جاري تحديد الموقع...',
+            style: TextStyle(
+              color: _position != null ? AppColors.success : AppColors.textSecondary,
+              fontSize: 13,
+            ),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        // حقل البحث
+        Row(textDirection: TextDirection.rtl, children: [
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.location_on, color: Colors.red, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              textDirection: TextDirection.rtl,
+              onChanged: _onTextChanged,
+              onSubmitted: (_) => _search(),
+              decoration: InputDecoration(
+                hintText: 'إلى أين تريد الذهاب؟',
+                hintStyle: const TextStyle(fontSize: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Theme.of(context).dividerColor),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                suffixIcon: IconButton(
+                  icon: Icon(Icons.search, color: AppColors.primary),
+                  onPressed: () => _search(),
+                ),
+              ),
+            ),
+          ),
+        ]),
+        // اقتراحات
+        if (_suggestions.isNotEmpty)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 230),
+            child: Container(
+              margin: const EdgeInsets.only(top: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Theme.of(context).dividerColor),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 6, offset: const Offset(0, 2))],
+              ),
+              child: ListView(
+                shrinkWrap: true,
+                children: _suggestions.map((item) {
+                  final name = item['name'] ?? '';
+                  final isPlace = item['type'] == 'place';
+                  final placeLat = _toDouble(item['lat']);
+                  final placeLng = _toDouble(item['lng']);
+                  return InkWell(
+                    onTap: () {
+                      _controller.text = name;
+                      setState(() => _suggestions = []);
+                      _search(
+                        override: name,
+                        destLat: isPlace ? placeLat : null,
+                        destLng: isPlace ? placeLng : null,
+                      );
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: Theme.of(context).dividerColor.withOpacity(0.3),
+                          ),
+                        ),
+                      ),
+                      child: Row(textDirection: TextDirection.rtl, children: [
+                        Icon(
+                          isPlace ? Icons.place : Icons.directions_bus_outlined,
+                          size: 18,
+                          color: isPlace ? Colors.red : AppColors.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                            Text(name, style: const TextStyle(fontSize: 14)),
+                            if (isPlace)
+                              const Text(
+                                'منطقة من الخريطة',
+                                style: TextStyle(fontSize: 10, color: AppColors.textHint),
+                              ),
+                          ]),
+                        ),
+                      ]),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  // ══════════════════════════════════════════
+  // شاشة فارغة
+  // ══════════════════════════════════════════
+  Widget _buildEmpty() => Center(
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.route, size: 72, color: AppColors.primary.withOpacity(0.15)),
+      const SizedBox(height: 14),
+      const Text(
+        'ابحث عن وجهتك',
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 16, fontWeight: FontWeight.w500),
+      ),
+      const SizedBox(height: 6),
+      const Text(
+        'اكتب اسم المكان أو المنطقة\nوسنجد لك أفضل طريق',
+        style: TextStyle(color: AppColors.textHint, fontSize: 13),
+        textAlign: TextAlign.center,
+      ),
+    ]),
+  );
+
+  // ══════════════════════════════════════════
+  // النتائج
+  // ══════════════════════════════════════════
+  Widget _buildResults(bool isDark) {
     final plans = List<Map<String, dynamic>>.from(_result?['plans'] ?? []);
     final isGeocoded = _result?['geocoded'] == true;
     final geocodedPlace = _result?['geocoded_place'] ?? '';
-    
-    if (plans.isEmpty) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.search_off, size: 60, color: AppColors.textHint),
-      const SizedBox(height: 12), Text(l.tr('no_routes_found'), style: const TextStyle(color: AppColors.textSecondary, fontSize: 15)),
-      const SizedBox(height: 4), Text(l.tr('try_another'), style: const TextStyle(color: AppColors.textHint, fontSize: 13)),
-    ]));
+
+    if (plans.isEmpty) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.search_off, size: 64, color: AppColors.textHint),
+          const SizedBox(height: 14),
+          const Text(
+            'لم نجد خطوط توصلك لوجهتك',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 15, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'جرّب اسم ثاني أو منطقة مجاورة',
+            style: TextStyle(color: AppColors.textHint, fontSize: 13),
+          ),
+        ]),
+      );
+    }
+
     return Column(children: [
-      // بانر يوضح إنو البحث كان بمنطقة مو محطة
+      // بانر بحث بمنطقة
       if (isGeocoded)
         Container(
           width: double.infinity,
@@ -211,83 +598,269 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
           child: Row(textDirection: TextDirection.rtl, children: [
             const Icon(Icons.place, size: 18, color: AppColors.primary),
             const SizedBox(width: 8),
-            Expanded(child: Text('أقرب مسارات لـ "$geocodedPlace" — انزل بالمحطة وامشي للوجهة',
-              style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w500))),
+            Expanded(
+              child: Text(
+                'بحثنا عن أقرب مسار لـ "$geocodedPlace" — الموقف قريب من وجهتك',
+                style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w500),
+              ),
+            ),
           ]),
         ),
-      Expanded(child: ListView.builder(
-        padding: const EdgeInsets.all(16), itemCount: plans.length,
-        itemBuilder: (c, i) => _buildPlanCard(plans[i], i, l, isDark),
-      )),
+
+      // رأس الاقتراحات
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+        child: Row(textDirection: TextDirection.rtl, children: [
+          const Icon(Icons.lightbulb_outline, size: 16, color: AppColors.textSecondary),
+          const SizedBox(width: 6),
+          Text(
+            '${plans.length} اقتراح${plans.length > 1 ? 'ين' : ''} — اختر الأنسب لك',
+            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+          ),
+        ]),
+      ),
+
+      Expanded(
+        child: ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+          itemCount: plans.length,
+          itemBuilder: (ctx, i) => _buildPlanCard(plans[i], i, isDark),
+        ),
+      ),
     ]);
   }
 
-  Widget _buildPlanCard(Map<String, dynamic> plan, int index, AppLocalizations l, bool isDark) {
+  // ══════════════════════════════════════════
+  // كارد الخطة
+  // ══════════════════════════════════════════
+  Widget _buildPlanCard(Map<String, dynamic> plan, int index, bool isDark) {
     final isDirect = plan['type'] == 'direct';
+    final tag = plan['tag'] ?? '';
     final legs = List<Map<String, dynamic>>.from(plan['legs'] ?? []);
     final totalMin = plan['total_minutes'] ?? 0;
-    final walkDist = plan['walk_to_station'] ?? 0;
-    final fromLat = plan['from_station_lat'];
-    final fromLng = plan['from_station_lng'];
-    final tag = plan['tag'] ?? '';
-    final tagAr = plan['tag_ar'] ?? '';
+    final totalWalking = plan['total_walking'] ?? 0;
+    final walkToStation = plan['walk_to_station'] ?? 0;
+    final fromLat = _toDouble(plan['from_station_lat']);
+    final fromLng = _toDouble(plan['from_station_lng']);
 
-    // لون الوسم حسب النوع
-    Color tagColor = const Color(0xFF1976D2); // أزرق = الأفضل كوقت
-    if (tag == 'comfort') tagColor = const Color(0xFFFA8C16); // برتقالي = الأفضل كراحة
+    // ── تصميم الوسم ──
+    final isFastest = tag == 'fastest';
+    final tagColor = isFastest ? const Color(0xFF1565C0) : const Color(0xFFE65100);
+    final tagBg = isFastest
+        ? (isDark ? const Color(0xFF0D2137) : const Color(0xFFE3F2FD))
+        : (isDark ? const Color(0xFF2D1600) : const Color(0xFFFFF3E0));
+    final tagIcon = isFastest ? Icons.bolt : Icons.self_improvement;
+    final tagTitle = isFastest ? '⚡ الأسرع' : '😌 الأريح';
+    final tagDesc = isFastest
+        ? 'أقل وقت — قد يشمل مشياً أكثر'
+        : 'أقل مشي وجهد — حتى لو  كان الوقت أطول';
+
+    // هل الرحلة دي نشطة؟
+    final isThisActive = _isTripActive &&
+        _activePlan != null &&
+        (_activePlan!['total_minutes'] == plan['total_minutes'] &&
+            _activePlan!['type'] == plan['type']);
 
     return Container(
-      margin: EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: index == 0 ? AppColors.primary.withOpacity(0.5) : Theme.of(context).dividerColor, width: index == 0 ? 2 : 1)),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isThisActive
+              ? AppColors.primary
+              : (index == 0
+                  ? AppColors.primary.withOpacity(0.4)
+                  : Theme.of(context).dividerColor),
+          width: isThisActive ? 2.5 : (index == 0 ? 1.5 : 1),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (isThisActive ? AppColors.primary : Colors.black).withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        // ── رأس الكارد ──
         Container(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(color: isDirect ? AppColors.primary.withOpacity(isDark ? 0.15 : 0.05) : (isDark ? const Color(0xFF3D2E00) : const Color(0xFFFFF7E6)),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(15))),
-          child: Row(textDirection: TextDirection.rtl, children: [
-            Container(padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: isDirect ? AppColors.primary : const Color(0xFFFA8C16), borderRadius: BorderRadius.circular(20)),
-              child: Text(isDirect ? l.tr('direct_trip') : (plan['type_ar'] ?? l.tr('transfer_trip')), style: TextStyle(color: Theme.of(context).cardColor, fontSize: 12, fontWeight: FontWeight.bold))),
-            const Spacer(),
-            if (tagAr.isNotEmpty) Container(padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: tagColor, borderRadius: BorderRadius.circular(10)),
-              child: Text(tagAr, style: TextStyle(color: Theme.of(context).cardColor, fontSize: 10, fontWeight: FontWeight.bold))),
-            const SizedBox(width: 8),
-            Text('$totalMin ${l.tr("minutes")}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(width: 4), const Icon(Icons.access_time, size: 16, color: AppColors.textSecondary),
-          ]),
-        ),
-
-        // المشي مع زر "وجّهني"
-        if (walkDist > 50) Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Row(textDirection: TextDirection.rtl, children: [
-            const Icon(Icons.directions_walk, size: 18, color: Color(0xFF1976D2)),
-            const SizedBox(width: 8),
-            Expanded(child: Text('${l.tr("walk_to_stop").replaceAll("{m}", walkDist.toString())}',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary))),
-            if (fromLat != null && fromLng != null)
-              GestureDetector(
-                onTap: () => _openWalkingDirections(fromLat is int ? (fromLat as int).toDouble() : fromLat, fromLng is int ? (fromLng as int).toDouble() : fromLng),
-                child: Container(padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: const Color(0xFF1976D2), borderRadius: BorderRadius.circular(20)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.navigation, size: 14, color: Colors.white),
-                    SizedBox(width: 4),
-                    Text(AppLocalizations.current.tr('guide_me'), style: TextStyle(color: Theme.of(context).cardColor, fontSize: 11, fontWeight: FontWeight.bold)),
-                  ])),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            color: tagBg,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Row(textDirection: TextDirection.rtl, children: [
+              // وسم النوع (مباشرة / تحويل)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isDirect ? AppColors.primary : const Color(0xFFF57C00),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  isDirect ? '🟢 رحلة مباشرة' : '🔄 رحلة بتحويل',
+                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                ),
               ),
+              const Spacer(),
+              // الوقت الكلي
+              Row(children: [
+                Text(
+                  '$totalMin',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    color: tagColor,
+                  ),
+                ),
+                const SizedBox(width: 3),
+                Text('دقيقة', style: TextStyle(fontSize: 12, color: tagColor)),
+              ]),
+            ]),
+            const SizedBox(height: 8),
+            // وسم الاقتراح
+            Row(textDirection: TextDirection.rtl, children: [
+              Icon(tagIcon, size: 16, color: tagColor),
+              const SizedBox(width: 6),
+              Text(
+                tagTitle,
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: tagColor),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  tagDesc,
+                  style: TextStyle(fontSize: 11, color: tagColor.withOpacity(0.8)),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            // إحصائيات سريعة
+            Row(textDirection: TextDirection.rtl, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              _statChip(
+                icon: Icons.directions_walk,
+                label: 'مشي $totalWalking م',
+                color: AppColors.textSecondary,
+              ),
+              _statChip(
+                icon: Icons.directions_bus,
+                label: '${legs.where((l) => l['action'] == 'bus').length} خط',
+                color: AppColors.primary,
+              ),
+              if (!isDirect)
+                _statChip(
+                  icon: Icons.swap_horiz,
+                  label: '${legs.where((l) => l['action'] == 'bus').length - 1} تحويل',
+                  color: const Color(0xFFF57C00),
+                ),
+            ]),
           ]),
         ),
 
-        ...legs.map((leg) => _buildLeg(leg, l)),
-        const SizedBox(height: 12),
+        // ── مشي للموقف + زر وجّهني ──
+        if (walkToStation > 50)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+            child: Row(textDirection: TextDirection.rtl, children: [
+              const Icon(Icons.directions_walk, size: 18, color: Color(0xFF1976D2)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'امشِ $walkToStation متر لأقرب موقف',
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+              ),
+              if (fromLat != null && fromLng != null)
+                _navButton(
+                  label: 'وجّهني',
+                  onTap: () => _openMapsWalk(_position?.latitude, _position?.longitude, fromLat, fromLng),
+                ),
+            ]),
+          ),
+
+        // ── الخطوات ──
+        const Padding(
+          padding: EdgeInsets.fromLTRB(14, 10, 14, 0),
+          child: Divider(height: 1),
+        ),
+        ...legs.asMap().entries.map((e) => _buildLeg(e.value, e.key, legs.length, isDark, isThisActive)),
+
+        // ── زر ابدأ / إيقاف ──
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+          child: SizedBox(
+            width: double.infinity,
+            child: isThisActive
+                ? OutlinedButton.icon(
+                    onPressed: _stopTrip,
+                    icon: const Icon(Icons.stop_circle_outlined, size: 18),
+                    label: const Text('إيقاف الرحلة'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  )
+                : ElevatedButton.icon(
+                    onPressed: () => _startTrip(plan),
+                    icon: const Icon(Icons.navigation, size: 18),
+                    label: const Text('ابدأ رحلتي 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 2,
+                    ),
+                  ),
+          ),
+        ),
       ]),
     );
   }
 
-  Widget _buildLeg(Map<String, dynamic> leg, AppLocalizations l) {
+  // ── إحصائية صغيرة ──
+  Widget _statChip({required IconData icon, required String label, required Color color}) {
+    return Row(children: [
+      Icon(icon, size: 13, color: color),
+      const SizedBox(width: 3),
+      Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500)),
+    ]);
+  }
+
+  // ── زر التوجيه ──
+  Widget _navButton({required String label, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1976D2),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.navigation, size: 13, color: Colors.white),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+        ]),
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════
+  // خطوة واحدة في الرحلة
+  // ══════════════════════════════════════════
+  Widget _buildLeg(
+    Map<String, dynamic> leg,
+    int legIdx,
+    int totalLegs,
+    bool isDark,
+    bool isTripActive,
+  ) {
     final isWalk = leg['action'] == 'walk';
     final from = leg['from'] ?? '—';
     final to = leg['to'] ?? '—';
@@ -297,75 +870,150 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     final meters = leg['meters'] ?? 0;
     final buses = leg['buses'] ?? 0;
     final busEta = leg['bus_eta'];
+    final toLat = _toDouble(leg['to_lat']);
+    final toLng = _toDouble(leg['to_lng']);
+    final fromLatLeg = _toDouble(leg['from_lat']);
+    final fromLngLeg = _toDouble(leg['from_lng']);
+
+    // الخطوة النشطة (فقط لما الرحلة شغّالة)
+    final isActive = isTripActive && legIdx == _activeLegIndex;
+    final isPast = isTripActive && legIdx < _activeLegIndex;
+
+    final iconColor = isWalk ? const Color(0xFF1976D2) : AppColors.primary;
+    final iconBg = isWalk
+        ? const Color(0xFF1976D2).withOpacity(0.1)
+        : AppColors.primary.withOpacity(0.1);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
       child: Row(textDirection: TextDirection.rtl, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(width: 36, height: 36,
-          decoration: BoxDecoration(color: (isWalk ? const Color(0xFF1976D2) : AppColors.primary).withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-          child: Icon(isWalk ? Icons.directions_walk : Icons.directions_bus, color: isWalk ? const Color(0xFF1976D2) : AppColors.primary, size: 20)),
+        // أيقونة + خط عمودي
+        Column(children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: isActive
+                  ? iconColor
+                  : (isPast ? Colors.grey.withOpacity(0.2) : iconBg),
+              borderRadius: BorderRadius.circular(10),
+              border: isActive ? Border.all(color: iconColor, width: 2) : null,
+            ),
+            child: Icon(
+              isWalk ? Icons.directions_walk : Icons.directions_bus,
+              color: isActive ? Colors.white : (isPast ? Colors.grey : iconColor),
+              size: 20,
+            ),
+          ),
+          if (legIdx < totalLegs - 1)
+            Container(width: 2, height: 20, color: Theme.of(context).dividerColor),
+        ]),
         const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(isWalk ? l.tr('walk_to_transfer') : l.tr('ride_bus'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-          const SizedBox(height: 4),
-          if (!isWalk) ...[
-            Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-              child: Text(routeName, style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600))),
-            const SizedBox(height: 4),
-            Text('${l.tr("from_to").replaceAll("{f}", from).replaceAll("{t}", to)}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-            Text('${l.tr("stations_minutes").replaceAll("{s}", "$stations").replaceAll("{m}", "$minutes")}${buses > 0 ? ' \u2022 ${l.tr("active_buses").replaceAll("{n}", "$buses")}' : ''}',
-              style: const TextStyle(fontSize: 11, color: AppColors.textHint), textDirection: TextDirection.rtl),
-            if (busEta != null && buses > 0)
-              Container(
-                margin: const EdgeInsets.only(top: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: AppColors.success.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: Text('🕐 أقرب باص بعد ~$busEta ${l.tr("minutes")}',
-                  style: const TextStyle(fontSize: 11, color: AppColors.success, fontWeight: FontWeight.w500)),
-              ),
-            if (buses == 0)
-              Container(
-                margin: const EdgeInsets.only(top: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: AppColors.warning.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: const Text('⚠️ ما في باصات نشطة حالياً على هالخط',
-                  style: TextStyle(fontSize: 11, color: AppColors.warning, fontWeight: FontWeight.w500)),
-              ),
-          ],
-          if (isWalk) ...[
-            Text('${l.tr("from_to").replaceAll("{f}", from).replaceAll("{t}", to)}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-            Text('${l.tr("walk_meters_min").replaceAll("{m}", "$meters").replaceAll("{n}", "$minutes")}', style: const TextStyle(fontSize: 11, color: AppColors.textHint), textDirection: TextDirection.rtl),
-            // زر وجّهني للمشي
-            if (leg['to_lat'] != null && leg['to_lng'] != null)
-              GestureDetector(
-                onTap: () {
-                  final fromLat = leg['from_lat'];
-                  final fromLng = leg['from_lng'];
-                  final toLat = leg['to_lat'];
-                  final toLng = leg['to_lng'];
-                  if (toLat != null && toLng != null) {
-                    final originLat = fromLat ?? _position?.latitude;
-                    final originLng = fromLng ?? _position?.longitude;
-                    if (originLat != null && originLng != null) {
-                      final url = 'https://www.google.com/maps/dir/?api=1&origin=$originLat,$originLng&destination=$toLat,$toLng&travelmode=walking';
-                      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                    }
-                  }
-                },
-                child: Container(
-                  margin: const EdgeInsets.only(top: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: const Color(0xFF1976D2), borderRadius: BorderRadius.circular(20)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.navigation, size: 14, color: Colors.white),
-                    const SizedBox(width: 4),
-                    Text(l.tr('guide_me'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                  ]),
+
+        // محتوى الخطوة
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            // عنوان + وسم "حالياً"
+            Row(textDirection: TextDirection.rtl, children: [
+              Expanded(
+                child: Text(
+                  isWalk ? 'امشِ للموقف' : 'اركب الباص',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: isActive ? iconColor : null,
+                  ),
                 ),
               ),
-          ],
-        ])),
+              if (isActive)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text('▶ الآن', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
+              if (isPast)
+                const Icon(Icons.check_circle, color: AppColors.success, size: 16),
+            ]),
+            const SizedBox(height: 4),
+
+            // تفاصيل الباص
+            if (!isWalk) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  routeName,
+                  style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'من $from ← $to',
+                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                textDirection: TextDirection.rtl,
+              ),
+              Text(
+                '$stations محطات • $minutes دقيقة${buses > 0 ? ' • $buses باص نشط' : ''}',
+                style: const TextStyle(fontSize: 11, color: AppColors.textHint),
+                textDirection: TextDirection.rtl,
+              ),
+              if (busEta != null && buses > 0)
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '🕐 أقرب باص بعد ~$busEta دقيقة',
+                    style: const TextStyle(fontSize: 11, color: AppColors.success, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              if (buses == 0)
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    '⚠️ لايوجد باصات نشطة حالياً على هذا هالخط',
+                    style: TextStyle(fontSize: 11, color: AppColors.warning, fontWeight: FontWeight.w500),
+                  ),
+                ),
+            ],
+
+            // تفاصيل المشي
+            if (isWalk) ...[
+              Text(
+                'من $from ← $to',
+                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                textDirection: TextDirection.rtl,
+              ),
+              Text(
+                '$meters متر • $minutes دقيقة مشي',
+                style: const TextStyle(fontSize: 11, color: AppColors.textHint),
+                textDirection: TextDirection.rtl,
+              ),
+              if (toLat != null && toLng != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: _navButton(
+                    label: 'وجّهني',
+                    onTap: () => _openMapsWalk(fromLatLeg, fromLngLeg, toLat, toLng),
+                  ),
+                ),
+            ],
+            const SizedBox(height: 4),
+          ]),
+        ),
       ]),
     );
   }

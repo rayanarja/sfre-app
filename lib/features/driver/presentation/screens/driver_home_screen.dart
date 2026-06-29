@@ -9,6 +9,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../shared/models/user_model.dart';
+import 'package:flutter/foundation.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -131,7 +132,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     }
   }
 
-  Future<void> _sendLocation() async {
+  /*Future<void> _sendLocation() async {
     if (_currentBus == null || !_isOnline) return;
     try {
       final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
@@ -143,7 +144,66 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     } catch (e) {
       // ignore
     }
+  }*/    
+
+
+
+
+Future<void> _sendLocation() async {
+  debugPrint('[_sendLocation] Called');
+
+  if (_currentBus == null) {
+    debugPrint('[_sendLocation] _currentBus is null');
+    return;
   }
+
+  if (!_isOnline) {
+    debugPrint('[_sendLocation] Device is offline');
+    return;
+  }
+
+  try {
+    debugPrint('[_sendLocation] Getting current position...');
+
+    final position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+
+    debugPrint(
+      '[_sendLocation] Position: '
+      'lat=${position.latitude}, lng=${position.longitude}',
+    );
+
+    final busId = _currentBus!['bus_id'];
+    debugPrint('[_sendLocation] Bus ID: $busId');
+
+    final api = ApiClient();
+    final endpoint = '/bus-tracker/position/$busId';
+
+    debugPrint('[_sendLocation] PUT $endpoint');
+    debugPrint(
+      '[_sendLocation] Payload: '
+      '{lat: ${position.latitude}, lng: ${position.longitude}}',
+    );
+
+    final response = await api.dio.put(
+      endpoint,
+      data: {
+        'lat': position.latitude,
+        'lng': position.longitude,
+      },
+    );
+
+    debugPrint(
+      '[_sendLocation] Success '
+      'status=${response.statusCode} '
+      'data=${response.data}',
+    );
+  } catch (e, stackTrace) {
+    debugPrint('[_sendLocation] ERROR: $e');
+    debugPrint('[_sendLocation] STACK TRACE:\n$stackTrace');
+  }
+}
 
   void _startLocationTracking() {
     _sendLocation();
@@ -185,7 +245,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         final busStatus = freshBus['current_status'];
         
         if (busStatus == 'maintenance') {
-          _showSnack('⚠️ الباص بالصيانة — تواصل مع الإدارة', AppColors.warning);
+          _showSnack('⚠️ الباص  في الصيانة — تواصل مع الإدارة', AppColors.warning);
           return;
         }
         if (busStatus == 'breakdown') {
@@ -269,7 +329,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           'driver_id': _driverData!['driver_id'],
           'bus_id': _currentBus!['bus_id'],
         });
-        _showSnack('✅ تم التراجع — أنت لسا بالدوام', AppColors.success);
+        _showSnack('✅ تم التراجع — أنت لازلت بالدوام', AppColors.success);
       } catch (e) {
         _showSnack(AppLocalizations.current.tr('error_undo'), AppColors.error);
       }
@@ -444,7 +504,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           'route_name': _currentRouteName,
           'note': noteController.text.isNotEmpty ? noteController.text : null,
         });
-        _showSnack('✅ تم إرسال الطلب للأدمن', AppColors.success);
+        _showSnack('✅ تم إرسال الطلب للإدارة ' , AppColors.success);
       } catch (e) {
         _showSnack(AppLocalizations.current.tr('error'), AppColors.error);
       }
@@ -608,7 +668,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       SizedBox(height: 24),
 
                       // ورديات
-                      Text('🗓️ وردياتي', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                      Text('🗓️ ورديّاتي', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                       SizedBox(height: 12),
 
                       if (_shifts.isEmpty)

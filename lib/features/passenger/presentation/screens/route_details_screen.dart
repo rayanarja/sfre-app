@@ -115,7 +115,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
               )
             else if (_nearestStation != null) ...[
               const Text(
-                '📍 أقرب موقف منك',
+                '📍 أقرب موقف لك',
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
@@ -199,7 +199,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                      '✅ رح تنبهك لما تقترب من ${_nearestStation!['name']}'),
+                                      '✅   سيصلك تنبيه عندما  تقترب من ${_nearestStation!['name']}'),
                                   backgroundColor: AppColors.success,
                                   behavior: SnackBarBehavior.floating,
                                 ),
@@ -250,7 +250,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
             if (stations.isEmpty)
               const Center(
                 child: Text(
-                  'ما في محطات لهذا الخط',
+                  ' لا يوجد محطات لهذا الخط',
                   style: TextStyle(color: AppColors.textSecondary),
                 ),
               ),

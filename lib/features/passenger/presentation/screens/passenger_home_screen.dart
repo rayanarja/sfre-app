@@ -297,7 +297,7 @@ void _showFamilyDialog() {
                             }
                           } catch (e) {
                         if (ctx.mounted) {
-                          String errorMsg = 'خطأ — تأكد إنو الإيميل مسجل بالتطبيق';
+                          String errorMsg = 'خطأ — تأكد أن البريد الالكتروني  مسجل بالتطبيق';
                           if (e is DioException && e.response?.data != null) {
                             errorMsg = e.response!.data['message'] ?? errorMsg;
                           }
@@ -322,7 +322,7 @@ void _showFamilyDialog() {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'العضو لازم يكون مسجل بالتطبيق — أدخل إيميلو',
+                  'العضو يجب أن يكون مسجل بالتطبيق — أدخل بريده الالكتروني',
                   style: TextStyle(color: AppColors.textHint, fontSize: 11),
                 ),
               ],

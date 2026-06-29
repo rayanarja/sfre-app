@@ -198,7 +198,7 @@ void _showSuccessDialog(Map<String, dynamic> data) {
             ),
             const SizedBox(height: 8),
             const Text(
-              'تأكد إنو عندك اشتراك فعّال',
+              'تأكد أنّك تملك اشتراك فعّال',
               style: TextStyle(color: AppColors.textSecondary),
               textAlign: TextAlign.center,
             ),
@@ -260,7 +260,7 @@ void _showSuccessDialog(Map<String, dynamic> data) {
                     size: 80, color: AppColors.primary.withOpacity(0.3)),
                 const SizedBox(height: 16),
                 const Text(
-                  'لازم عندك اشتراك فعّال',
+                  'يجب أن يكون لديك اشتراك فعّال',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,

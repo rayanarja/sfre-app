@@ -239,7 +239,7 @@ class _ReportScreenState extends State<ReportScreen> {
                     return 'الرجاء كتابة وصف للمشكلة';
                   }
                   if (value.length < 10) {
-                    return 'الوصف لازم يكون 10 أحرف على الأقل';
+                    return 'الوصف يجب أن يكون 10 أحرف على الأقل';
                   }
                   return null;
                 },
