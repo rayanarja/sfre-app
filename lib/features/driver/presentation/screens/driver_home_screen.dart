@@ -337,80 +337,6 @@ Future<void> _sendLocation() async {
   }
 
   // === إبلاغ عن تأخير ===
-  Future<void> _showDelayDialog() async {
-    int delayMinutes = 10;
-    final reasons = ['زحمة سير', 'عطل بسيط', 'حادث على الطريق', 'سبب آخر'];
-    String selectedReason = reasons[0];
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Row(
-            textDirection: TextDirection.rtl,
-            children: [Icon(Icons.schedule, color: AppColors.warning), SizedBox(width: 8), Text(AppLocalizations.current.tr('report_delay_title'))],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(AppLocalizations.current.tr('how_many_min'), style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    onPressed: () { if (delayMinutes > 5) setDialogState(() => delayMinutes -= 5); },
-                    icon: Icon(Icons.remove_circle_outline, color: AppColors.error),
-                  ),
-                  Text('$delayMinutes دقيقة', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.warning)),
-                  IconButton(
-                    onPressed: () { if (delayMinutes < 60) setDialogState(() => delayMinutes += 5); },
-                    icon: Icon(Icons.add_circle_outline, color: AppColors.success),
-                  ),
-                ],
-              ),
-              SizedBox(height: 16),
-              Text(AppLocalizations.current.tr('reason'), style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              ...reasons.map((r) => RadioListTile<String>(
-                title: Text(r, style: TextStyle(fontSize: 14)),
-                value: r,
-                groupValue: selectedReason,
-                onChanged: (v) => setDialogState(() => selectedReason = v!),
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-              )),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLocalizations.current.tr('cancel'))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.warning),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(AppLocalizations.current.tr('send')),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (result == true && _currentBus != null) {
-      try {
-        final api = ApiClient();
-        await api.dio.post('/driver-actions/delay-alert', data: {
-          'driver_id': _driverData!['driver_id'],
-          'bus_id': _currentBus!['bus_id'],
-          'station_name': null,
-          'reason': '$selectedReason — تأخير $delayMinutes دقيقة',
-        });
-        _showSnack('✅ تم إرسال تنبيه التأخير ($delayMinutes دقيقة)', AppColors.success);
-      } catch (e) {
-        _showSnack(AppLocalizations.current.tr('error'), AppColors.error);
-      }
-    }
-  }
-
   // === إبلاغ عن عطل ===
   Future<void> _showBreakdownDialog() async {
     final descController = TextEditingController();
@@ -648,8 +574,6 @@ Future<void> _sendLocation() async {
                       const SizedBox(height: 12),
 
                       Row(textDirection: TextDirection.rtl, children: [
-                        _buildAction(Icons.schedule, 'تأخير', AppColors.warning, _currentBus != null ? _showDelayDialog : null),
-                        SizedBox(width: 10),
                         _buildAction(Icons.build, 'عطل', AppColors.error, _currentBus != null ? _showBreakdownDialog : null),
                         SizedBox(width: 10),
                         _buildAction(Icons.add_circle_outline, 'باص إضافي', AppColors.primary, _currentBus != null ? _showExtraBusDialog : null),

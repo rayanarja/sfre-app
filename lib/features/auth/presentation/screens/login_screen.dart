@@ -83,7 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Container(
                     width: 80, height: 80,
                     decoration: BoxDecoration(color: _isDriverMode ? AppColors.driverColor : AppColors.primary, borderRadius: BorderRadius.circular(20)),
-                    child: Icon(_isDriverMode ? Icons.local_shipping_rounded : Icons.directions_bus_rounded, color: Theme.of(context).cardColor, size: 48),
+                    child: Icon(Icons.directions_bus_rounded, color: Theme.of(context).cardColor, size: 48),
                   ),
                   SizedBox(height: 16),
                   Text(AppLocalizations.current.tr('welcome'), style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: null)),
@@ -98,7 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   padding: EdgeInsets.all(4),
                   child: Row(children: [
                     _buildTab(false, Icons.person, 'راكب', AppColors.primary),
-                    _buildTab(true, Icons.local_shipping, 'سائق', AppColors.driverColor),
+                    _buildTab(true, Icons.directions_bus, 'سائق', AppColors.driverColor),
                   ]),
                 ),
 
