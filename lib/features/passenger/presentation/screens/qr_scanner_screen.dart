@@ -112,7 +112,6 @@ void _showSuccessDialog(Map<String, dynamic> data) {
 
             const SizedBox(height: 12),
 
-            // عداد الرحلات
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -145,7 +144,7 @@ void _showSuccessDialog(Map<String, dynamic> data) {
 
             if (data['trips_remaining'] != null && data['trips_remaining'] <= 10) ...[
               const SizedBox(height: 8),
-              const Text('⚠️ رحلاتك قربت تخلص — جدد اشتراكك', style: TextStyle(color: AppColors.error, fontSize: 12)),
+              const Text('⚠️ رحلاتك أوشكت على الانتهاء  — جدد اشتراكك', style: TextStyle(color: AppColors.error, fontSize: 12)),
             ],
           ],
         ),
@@ -288,7 +287,6 @@ void _showSuccessDialog(Map<String, dynamic> data) {
       );
     }
 
-    // شاشة المسح
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(

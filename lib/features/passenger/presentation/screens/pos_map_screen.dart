@@ -38,7 +38,7 @@ class _POSMapScreenState extends State<POSMapScreen> {
       final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       setState(() => _currentPosition = LatLng(position.latitude, position.longitude));
     } catch (e) {
-      setState(() => _currentPosition = const LatLng(36.2021, 37.1343)); // حلب
+      setState(() => _currentPosition = const LatLng(36.2021, 37.1343)); 
     }
   }
 
@@ -82,7 +82,6 @@ class _POSMapScreenState extends State<POSMapScreen> {
               ])),
             ]),
             const SizedBox(height: 16),
-            // رقم الهاتف
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -94,7 +93,6 @@ class _POSMapScreenState extends State<POSMapScreen> {
               ]),
             ),
             const SizedBox(height: 12),
-            // المسافة
             if (_currentPosition != null && lat != null && lng != null)
               Container(
                 width: double.infinity,

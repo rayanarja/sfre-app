@@ -4,8 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 
-/// شاشة عرض خطط الاشتراك — للمعاينة فقط
-/// الشراء حصرياً من نقاط البيع
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({super.key});
   @override
@@ -74,7 +72,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // معلومة مهمة
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -97,7 +94,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     ]),
                   ),
 
-                  // الخطط
                   ..._plans.asMap().entries.map((entry) {
                     final plan = entry.value;
                     final index = entry.key;
@@ -152,7 +148,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
                   const SizedBox(height: 20),
 
-                  // زر نقاط البيع
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(

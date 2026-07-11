@@ -37,7 +37,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _isLoading = false;
       });
 
-      // بمجرد ما تطلع الشاشة كل شي يصير مقروء تلقائياً ✅
       await _markAllAsRead();
 
     } catch (e) {

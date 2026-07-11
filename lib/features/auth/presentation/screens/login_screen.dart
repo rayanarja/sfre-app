@@ -177,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ]),
 
                 if (_isDriverMode)
-                  _buildInfoBox('بيانات الدخول بتجيك من الأدمن (رقم الهاتف + كلمة المرور)', AppColors.driverColor),
+                  _buildInfoBox('بيانات الدخول ستصلك من الإدارة  (رقم الهاتف + كلمة المرور)', AppColors.driverColor),
               ],
             ),
           ),

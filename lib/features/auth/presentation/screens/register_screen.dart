@@ -122,7 +122,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       return 'الرجاء إدخال اسم المستخدم';
                     }
                     if (value.length < 3) {
-                      return 'اسم المستخدم لازم يكون 3 أحرف على الأقل';
+                      return 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل';
                     }
                     return null;
                   },
@@ -132,7 +132,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // Email
                 const Text(
-                  'الإيميل *',
+                  'البريد الإلكتروني *',
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: null,
@@ -149,11 +149,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'الرجاء إدخال الإيميل';
+                      return 'الرجاء إدخال البريد الإلكتروني';
                     }
                     final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
                     if (!emailRegex.hasMatch(value.trim())) {
-                      return 'الرجاء إدخال إيميل صحيح';
+                      return 'الرجاء إدخال البريد الإلكتروني صحيح';
                     }
                     return null;
                   },
@@ -221,7 +221,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       return 'الرجاء إدخال كلمة المرور';
                     }
                     if (value.length < 6) {
-                      return 'كلمة المرور لازم تكون 6 أحرف على الأقل';
+                      return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
                     }
                     return null;
                   },
@@ -250,7 +250,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   textDirection: TextDirection.rtl,
                   children: [
                     const Text(
-                      'عندك حساب؟ ',
+                      'لديك حساب؟ ',
                       style: TextStyle(color: AppColors.textSecondary),
                     ),
                     GestureDetector(

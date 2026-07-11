@@ -30,7 +30,7 @@ class _PassengerHomeScreenState extends State<PassengerHomeScreen> {
   @override
   void initState() {
     super.initState();
-    NotificationService().init(); // ← لازم يتسوّى init أولاً
+    NotificationService().init(); 
     _loadUser();
     _loadFavorites();
     _startNotificationTimer();
@@ -70,7 +70,6 @@ int _lastNotifCount = 0;
       final notifications = List<Map<String, dynamic>>.from(response.data);
       final unread = notifications.where((n) => n['is_read'] == false).length;
       if (mounted) {
-        // إذا في إشعار جديد — طنطن
       if (unread > _lastNotifCount && _lastNotifCount > 0) {
             final msg = notifications.firstWhere((n) => n['is_read'] == false)['message'] ?? 'إشعار جديد';
             NotificationService().alertUser(title: '🔔 إشعار جديد', body: msg);
@@ -356,7 +355,6 @@ void _showFamilyDialog() {
     );
   }
 
-  // =============== TAB 1 — الرئيسية ===============
   Widget _buildHomeTab() {
     return SafeArea(
       child: SingleChildScrollView(
@@ -507,7 +505,6 @@ void _showFamilyDialog() {
     );
   }
 
-  // =============== TAB 2 — البحث ===============
   Widget _buildSearchTab() {
     return SafeArea(
       child: Padding(
@@ -538,7 +535,6 @@ void _showFamilyDialog() {
     );
   }
 
-  // =============== TAB 3 — الاشتراك ===============
   Widget _buildSubscriptionTab() {
     return SafeArea(
       child: SingleChildScrollView(
@@ -593,7 +589,6 @@ void _showFamilyDialog() {
             if (_loadingSubscription) const Center(child: CircularProgressIndicator()),
 
             if (!_loadingSubscription && _subscription != null) ...[
-              // بطاقة الاشتراك
               Container(
                 width: double.infinity,
                 padding: EdgeInsets.all(20),
@@ -635,7 +630,6 @@ void _showFamilyDialog() {
 
               const SizedBox(height: 20),
 
-              // باقي على الانتهاء
               Container(
                 width: double.infinity,
                 padding: EdgeInsets.all(16),
@@ -653,7 +647,6 @@ void _showFamilyDialog() {
                 ]),
               ),
 
-              // كارد الرحلات
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,
@@ -672,7 +665,6 @@ void _showFamilyDialog() {
                 ]),
               ),
 
-              // زر إدارة العائلة
               if ((_subscription!['max_users'] ?? 1) > 1) ...[
                 const SizedBox(height: 12),
                 GestureDetector(
@@ -712,7 +704,6 @@ void _showFamilyDialog() {
       ),
     );
   }
-  // =============== TAB 4 — حسابي ===============
   Widget _buildProfileTab() {
     final l = AppLocalizations.current;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -786,7 +777,6 @@ void _showFamilyDialog() {
     );
   }
 
-  // =============== Bottom Nav ===============
   Widget _buildBottomNav() {
     return BottomNavigationBar(
       currentIndex: _currentIndex,

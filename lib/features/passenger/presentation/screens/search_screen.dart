@@ -21,6 +21,8 @@ class _SearchScreenState extends State<SearchScreen> {
   List<String> _favorites = [];
   final NotificationService _notificationService = NotificationService();
   Position? _currentPosition;
+  static const double _avgBusMetersPerMinute = 320;
+  static const double _avgStopDelayMinutes = 0.65;
 
   @override
   void initState() {
@@ -104,7 +106,6 @@ class _SearchScreenState extends State<SearchScreen> {
     final hasPermission = await _notificationService.requestPermission();
     if (!hasPermission) return;
 
-    // نحتاج نجيب lat/lng للموقف الأقرب
     try {
       final api = ApiClient();
       final stationsRes = await api.dio.get('/bus-tracker/stations/${route['route_id']}');
@@ -150,7 +151,6 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       body: Column(
         children: [
-          // حقل البحث
           Container(
             color: Theme.of(context).cardColor,
             padding: const EdgeInsets.all(16),
@@ -180,7 +180,6 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ),
 
-          // شريط التتبع
           if (_notificationService.isTracking)
             Container(
               width: double.infinity,
@@ -203,7 +202,6 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
 
-          // النتائج
           Expanded(
             child: !_hasSearched
                 ? _buildInitialState()
@@ -262,11 +260,17 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _buildRouteCard(Map<String, dynamic> route, bool isFirst) {
     final buses = List<Map<String, dynamic>>.from(route['active_buses'] ?? []);
     final busCount = route['active_buses_count'] ?? 0;
-    final bestEta = route['best_eta_minutes'];
     final closest = route['closest_station'];
     final directionAr = route['passenger_direction_ar'];
     final stationName = route['matched_station'] ?? '';
     final isFav = _favorites.contains(stationName);
+    final sortedBuses = [...buses]..sort((a, b) {
+      final aToward = _isBusTowardPassenger(a, directionAr);
+      final bToward = _isBusTowardPassenger(b, directionAr);
+      if (aToward != bToward) return aToward ? -1 : 1;
+      return _estimateArrivalMinutes(a).compareTo(_estimateArrivalMinutes(b));
+    });
+    final bestEta = sortedBuses.isEmpty ? route['best_eta_minutes'] : _estimateArrivalMinutes(sortedBuses.first);
 
     final isTrackingThis = _notificationService.isTracking && closest != null &&
         _notificationService.targetStation?['name'] == closest['name'];
@@ -287,7 +291,6 @@ class _SearchScreenState extends State<SearchScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // اسم الخط + badges
                 Row(
                   textDirection: TextDirection.rtl,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -321,7 +324,6 @@ class _SearchScreenState extends State<SearchScreen> {
 
                 const SizedBox(height: 10),
 
-                // الوجهة + أقرب موقف
                 Row(
                   textDirection: TextDirection.rtl,
                   children: [
@@ -359,6 +361,18 @@ class _SearchScreenState extends State<SearchScreen> {
                 ],
 
                 const SizedBox(height: 4),
+                if (bestEta != null) ...[
+                  Row(
+                    textDirection: TextDirection.rtl,
+                    children: [
+                      const Icon(Icons.schedule, size: 14, color: AppColors.warning),
+                      const SizedBox(width: 4),
+                      Text('أقرب باص بعد حوالي $bestEta دقيقة',
+                          style: const TextStyle(color: AppColors.warning, fontSize: 12, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                ],
                 Row(
                   textDirection: TextDirection.rtl,
                   children: [
@@ -371,7 +385,6 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ),
 
-          // الباصات القريبة
           if (buses.isNotEmpty) ...[
             const Divider(height: 1),
             Padding(
@@ -385,7 +398,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 ],
               ),
             ),
-            ...buses.take(3).map((bus) => _buildBusRow(bus, directionAr)),
+            ...sortedBuses.take(3).map((bus) => _buildBusRow(bus, directionAr)),
             if (buses.length > 3)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -409,7 +422,6 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ],
 
-          // زر التنبيه
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             child: SizedBox(
@@ -445,18 +457,51 @@ class _SearchScreenState extends State<SearchScreen> {
     return null;
   }
 
-  Widget _buildBusRow(Map<String, dynamic> bus, dynamic passengerDirection) {
+  num? _toNum(dynamic value) {
+    if (value is num) return value;
+    if (value is String) return num.tryParse(value);
+    return null;
+  }
+
+  int _estimateArrivalMinutes(Map<String, dynamic> bus) {
+    final stationsAway = _toNum(bus['stations_away']);
+    final distanceMeters = _toNum(bus['distance_meters']);
+    final serverEta = _toNum(bus['estimated_minutes']);
+
+    if (stationsAway != null) {
+      final routeProgressMinutes =
+          stationsAway.clamp(0, 999) * (1.0 + _avgStopDelayMinutes);
+      final distanceCorrectionMinutes =
+          distanceMeters == null ? 0 : (distanceMeters / _avgBusMetersPerMinute) * 0.35;
+      return (routeProgressMinutes + distanceCorrectionMinutes).ceil().clamp(1, 999).toInt();
+    }
+
+    if (distanceMeters != null) {
+      return (distanceMeters / _avgBusMetersPerMinute).ceil().clamp(1, 999).toInt();
+    }
+
+    return (serverEta ?? 1).ceil().clamp(1, 999).toInt();
+  }
+
+  bool _isBusTowardPassenger(Map<String, dynamic> bus, dynamic passengerDirection) {
     final isIdeal = bus['is_ideal'] == true;
-    final minutes = bus['estimated_minutes'];
-    final stationsAway = bus['stations_away'];
     final busDirection = _normalizeDirection(bus['direction'] ?? bus['direction_ar']);
     final wantedDirection = _normalizeDirection(passengerDirection);
-    final sameDirection = busDirection != null && wantedDirection != null && busDirection == wantedDirection;
-    final hasStationsAway = stationsAway is num;
-    final isTowardPassenger = bus['is_towards_passenger'] == true ||
+    final stationsAway = _toNum(bus['stations_away']);
+    final sameDirection =
+        busDirection != null && wantedDirection != null && busDirection == wantedDirection;
+
+    return bus['is_towards_passenger'] == true ||
         isIdeal ||
-        (sameDirection && (!hasStationsAway || stationsAway >= 0));
-    final directionLabel = isTowardPassenger ? 'جاي باتجاهك' : 'بعكس الاتجاه';
+        (sameDirection && (stationsAway == null || stationsAway >= 0));
+  }
+
+  Widget _buildBusRow(Map<String, dynamic> bus, dynamic passengerDirection) {
+    final isIdeal = bus['is_ideal'] == true;
+    final minutes = _estimateArrivalMinutes(bus);
+    final stationsAway = bus['stations_away'];
+    final isTowardPassenger = _isBusTowardPassenger(bus, passengerDirection);
+    final directionLabel = isTowardPassenger ? 'قادم باتجاهك' : 'بعكس الاتجاه';
     final directionColor = isTowardPassenger ? AppColors.success : AppColors.warning;
 
     return Padding(
@@ -471,7 +516,6 @@ class _SearchScreenState extends State<SearchScreen> {
         child: Row(
           textDirection: TextDirection.rtl,
           children: [
-            // رقم الباص
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
@@ -479,7 +523,6 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
             const SizedBox(width: 8),
 
-            // اتجاه
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
@@ -524,25 +567,22 @@ class _SearchScreenState extends State<SearchScreen> {
 
             const Spacer(),
 
-            // المسافة والمحطات
             if (stationsAway != null)
               Text('$stationsAway محطة', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
 
             const SizedBox(width: 8),
 
-            // الوقت
-            if (minutes != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: minutes <= 5 ? AppColors.success.withOpacity(0.1) : minutes <= 15 ? AppColors.warning.withOpacity(0.1) : AppColors.error.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '$minutes د',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: minutes <= 5 ? AppColors.success : minutes <= 15 ? AppColors.warning : AppColors.error),
-                ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: minutes <= 5 ? AppColors.success.withOpacity(0.1) : minutes <= 15 ? AppColors.warning.withOpacity(0.1) : AppColors.error.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
+              child: Text(
+                '$minutes د',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: minutes <= 5 ? AppColors.success : minutes <= 15 ? AppColors.warning : AppColors.error),
+              ),
+            ),
           ],
         ),
       ),

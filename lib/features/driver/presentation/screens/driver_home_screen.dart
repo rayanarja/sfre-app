@@ -107,7 +107,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       if (myDriver.isNotEmpty) {
         final shifts = List<Map<String, dynamic>>.from(myDriver['shifts'] ?? []);
         
-        // تحقق: هل في وردية نشطة؟ إذا لا → اجعله offline
         final hasActiveShift = shifts.any((s) => 
           s['status'] == 'active' || s['status'] == 'pending_stop');
         
@@ -122,7 +121,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           _isLoading = false;
         });
         
-        // إذا السيرفر يقول online بس ما في وردية نشطة → حوّلو offline
         if (myDriver['status'] == 'online' && !hasActiveShift) {
           try {
             final api = ApiClient();
@@ -137,19 +135,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     }
   }
 
-  /*Future<void> _sendLocation() async {
-    if (_currentBus == null || !_isOnline) return;
-    try {
-      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      final api = ApiClient();
-      await api.dio.put('/bus-tracker/position/${_currentBus!['bus_id']}', data: {
-        'lat': position.latitude,
-        'lng': position.longitude,
-      });
-    } catch (e) {
-      // ignore
-    }
-  }*/    
+   
 
 
   String? _normalizeDirection(dynamic value) {
@@ -386,7 +372,6 @@ Future<void> _sendLocation() async {
   Future<void> _toggleOnline() async {
     if (_driverData == null) return;
 
-    // بدء العمل
     if (!_isOnline) {
       if (_currentBus == null) {
         _showSnack(AppLocalizations.current.tr('no_shift_assigned'), AppColors.warning);
@@ -396,7 +381,6 @@ Future<void> _sendLocation() async {
       return;
     }
 
-    // إيقاف العمل — نظام التأكيد الاحترافي
     await _showStopConfirmation();
   }
 
@@ -404,7 +388,6 @@ Future<void> _sendLocation() async {
     try {
       final api = ApiClient();
       
-      // تحقق من حالة الباص — إذا بالصيانة أو عطلان ما بيقدر يبلّش
       if (_currentBus != null) {
         final busRes = await api.dio.get('/buses/${_currentBus!['bus_id']}');
         final freshBus = busRes.data;
@@ -438,9 +421,7 @@ Future<void> _sendLocation() async {
     }
   }
 
-  /// نظام التأكيد — BottomSheet مع عداد تنازلي 30 ثانية
   Future<void> _showStopConfirmation() async {
-    // أولاً: أرسل طلب الإيقاف المؤقت للسيرفر
     try {
       final api = ApiClient();
       final response = await api.dio.post('/driver-actions/log-activity', data: {
@@ -458,7 +439,6 @@ Future<void> _sendLocation() async {
 
     if (!mounted) return;
 
-    // اعرض BottomSheet التأكيد
     final result = await showModalBottomSheet<String>(
       context: context,
       isDismissible: false,
@@ -471,7 +451,6 @@ Future<void> _sendLocation() async {
 
     final api = ApiClient();
     if (result == 'confirm') {
-      // تأكيد الإيقاف
       try {
         await api.dio.post('/driver-actions/confirm-stop', data: {
           'driver_id': _driverData!['driver_id'],
@@ -489,7 +468,6 @@ Future<void> _sendLocation() async {
         _showSnack(AppLocalizations.current.tr('error'), AppColors.error);
       }
     } else {
-      // تراجع (إلغاء أو انتهى الوقت)
       try {
         await api.dio.post('/driver-actions/cancel-stop', data: {
           'driver_id': _driverData!['driver_id'],
@@ -502,8 +480,6 @@ Future<void> _sendLocation() async {
     }
   }
 
-  // === إبلاغ عن تأخير ===
-  // === إبلاغ عن عطل ===
   Future<void> _showBreakdownDialog() async {
     final descController = TextEditingController();
     final breakdownTypes = ['مشكلة بالمحرك', 'إطار مثقوب', 'مشكلة كهربائية', 'مشكلة بالفرامل', 'أخرى'];
@@ -568,7 +544,6 @@ Future<void> _sendLocation() async {
     }
   }
 
-  // === طلب باص إضافي ===
   Future<void> _showExtraBusDialog() async {
     final noteController = TextEditingController();
 
@@ -668,7 +643,6 @@ Future<void> _sendLocation() async {
 
                       const SizedBox(height: 24),
 
-                      // حالة الاتصال
                       GestureDetector(
                         onTap: _toggleOnline,
                         child: Container(
@@ -701,7 +675,6 @@ Future<void> _sendLocation() async {
 
                       SizedBox(height: 20),
 
-                      // معلومات الباص
                       if (_currentBus != null)
                         Container(
                           width: double.infinity,
@@ -735,7 +708,6 @@ Future<void> _sendLocation() async {
 
                       const SizedBox(height: 20),
 
-                      // أزرار الإجراءات
                       const Text('📋 إجراءات سريعة', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                       const SizedBox(height: 12),
 
@@ -860,7 +832,6 @@ Future<void> _sendLocation() async {
   }
 }
 
-/// BottomSheet تأكيد الإيقاف مع عداد تنازلي
 class _StopConfirmationSheet extends StatefulWidget {
   @override
   State<_StopConfirmationSheet> createState() => _StopConfirmationSheetState();
@@ -876,7 +847,7 @@ class _StopConfirmationSheetState extends State<_StopConfirmationSheet> {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_secondsLeft <= 1) {
         timer.cancel();
-        if (mounted) Navigator.pop(context, 'cancel'); // انتهى الوقت = تراجع تلقائي
+        if (mounted) Navigator.pop(context, 'cancel'); 
         return;
       }
       setState(() => _secondsLeft--);
@@ -894,20 +865,18 @@ class _StopConfirmationSheetState extends State<_StopConfirmationSheet> {
     final progress = _secondsLeft / 30;
 
     return WillPopScope(
-      onWillPop: () async => false, // منع الإغلاق بالسحب
+      onWillPop: () async => false, 
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle
             Container(
               width: 40, height: 4,
               decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
             ),
             const SizedBox(height: 24),
 
-            // أيقونة تحذير
             Container(
               width: 72, height: 72,
               decoration: BoxDecoration(
@@ -932,7 +901,6 @@ class _StopConfirmationSheetState extends State<_StopConfirmationSheet> {
             ),
             const SizedBox(height: 20),
 
-            // العداد التنازلي
             Stack(
               alignment: Alignment.center,
               children: [
@@ -965,11 +933,9 @@ class _StopConfirmationSheetState extends State<_StopConfirmationSheet> {
             ),
             const SizedBox(height: 24),
 
-            // أزرار
             Row(
               textDirection: TextDirection.rtl,
               children: [
-                // زر التراجع (الأكبر — الخيار الآمن)
                 Expanded(
                   flex: 3,
                   child: ElevatedButton.icon(
@@ -985,7 +951,6 @@ class _StopConfirmationSheetState extends State<_StopConfirmationSheet> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                // زر التأكيد (أصغر)
                 Expanded(
                   flex: 2,
                   child: OutlinedButton(

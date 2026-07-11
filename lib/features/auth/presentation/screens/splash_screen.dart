@@ -63,7 +63,7 @@ textDirection: TextDirection.rtl,
             ),
             SizedBox(height: 8),
             Text(
-              'نظام تتبع الباصات الذكي',
+              'نظام تتبع الباصات ',
               style: TextStyle(
                 color: Colors.white.withOpacity(0.8),
                 fontSize: 16,

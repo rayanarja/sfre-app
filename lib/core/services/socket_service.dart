@@ -3,11 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
 import 'notification_service.dart';
 
-/// SocketService — يتصل بالسيرفر عبر Socket.IO ويشغل الإشعارات بالفورغراوند
-/// 
-/// أضف هالسطر لـ pubspec.yaml:
-///   socket_io_client: ^3.0.2
-///
+
+
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class SocketService {
@@ -20,7 +17,6 @@ class SocketService {
 
   bool get isConnected => _connected;
 
-  /// اتصل بالسيرفر
   Future<void> connect() async {
     if (_socket != null && _connected) return;
 
@@ -30,7 +26,6 @@ class SocketService {
     final userId = prefs.getInt('user_id');
     final driverId = prefs.getInt('driver_id');
 
-    // الـ baseUrl فيها /api — شيلها للسوكت
     final socketUrl = AppConstants.baseUrl.replaceAll('/api', '');
 
     _socket = IO.io(socketUrl, IO.OptionBuilder()
@@ -41,7 +36,6 @@ class SocketService {
 
     _socket!.onConnect((_) {
       _connected = true;
-      // عرّف عن حالك
       _socket!.emit('join', {
         'role': role,
         'user_id': userId,
@@ -51,7 +45,6 @@ class SocketService {
 
     _socket!.onDisconnect((_) => _connected = false);
 
-    // ═══ استمع للإشعارات — صوت + إشعار حتى بالفورغراوند ═══
     _socket!.on('notification', (data) {
       final message = data['message'] ?? '';
       final type = data['type'] ?? 'general';
@@ -66,29 +59,23 @@ class SocketService {
         default:
           title = '🔔 إشعار جديد';
       }
-      // صوت + إشعار بالدرابية حتى لو التطبيق مفتوح
       NotificationService().alertUser(title: title, body: message);
     });
 
-    // تحديث موقع الباص (للخريطة)
     _socket!.on('bus:position', (data) {
-      // يمكنك إضافة StreamController هون لتحديث الخريطة
     });
 
     _socket!.connect();
   }
 
-  /// تتبع باص معين
   void trackBus(int busId) {
     _socket?.emit('bus:track', {'bus_id': busId});
   }
 
-  /// وقف تتبع
   void untrackBus(int busId) {
     _socket?.emit('bus:untrack', {'bus_id': busId});
   }
 
-  /// أرسل موقع السائق
   void sendPosition(int busId, double lat, double lng, {int? speed}) {
     _socket?.emit('position:update', {
       'bus_id': busId,
@@ -98,7 +85,6 @@ class SocketService {
     });
   }
 
-  /// فصل
   void disconnect() {
     _socket?.disconnect();
     _socket = null;

@@ -132,17 +132,12 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     if (mounted) setState(() => _isLoading = false);
   }
 
-  // ══════════════════════════════════════════════════════════
-  // بدء الرحلة — تشغيل GPS وإشعارات على كل خطوة
-  // ══════════════════════════════════════════════════════════
   Future<void> _startTrip(Map<String, dynamic> plan) async {
-    // أوقف أي رحلة سابقة
     await _stopTrip(silent: true);
 
     final legs = List<Map<String, dynamic>>.from(plan['legs'] ?? []);
     if (legs.isEmpty) return;
 
-    // قائمة نقاط المراقبة: كل خطوة فيها إحداثيات وجهة
     final waypoints = <Map<String, dynamic>>[];
 
     for (int i = 0; i < legs.length; i++) {
@@ -193,13 +188,11 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
       _legNotified.addAll(List.filled(waypoints.length, false));
     });
 
-    // إشعار ابتداء الرحلة
     await NotificationService().showNotification(
       title: '🚌 بدأت رحلتك!',
       body: 'اتجه للموقف — سنبلغك عند كل خطوة',
     );
 
-    // تتبع GPS ومقارنة مع نقاط المراقبة
     int currentWaypointIdx = 0;
     _tripGpsSub = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
@@ -226,7 +219,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
         }
         currentWaypointIdx++;
 
-        // إذا وصلنا لآخر نقطة — الرحلة انتهت
         if (currentWaypointIdx >= waypoints.length) {
           Future.delayed(const Duration(seconds: 2), () {
             if (mounted) _stopTrip();
@@ -254,9 +246,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     }
   }
 
-  // ══════════════════════════
-  // مساعدات
-  // ══════════════════════════
   void _snack(String msg, Color c) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -299,9 +288,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     super.dispose();
   }
 
-  // ══════════════════════════════════════════
-  // build
-  // ══════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -323,13 +309,10 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
         ],
       ),
       body: Column(children: [
-        // ── بانر الرحلة النشطة ──
         if (_isTripActive && _activePlan != null) _buildActiveTripBanner(isDark),
 
-        // ── حقل البحث ──
         _buildSearchHeader(isDark),
 
-        // ── نتائج ──
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
@@ -341,9 +324,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     );
   }
 
-  // ══════════════════════════════════════════
-  // بانر الرحلة النشطة (يظهر في الأعلى)
-  // ══════════════════════════════════════════
   Widget _buildActiveTripBanner(bool isDark) {
     final legs = List<Map<String, dynamic>>.from(_activePlan?['legs'] ?? []);
     final currentLeg = _activeLegIndex < legs.length ? legs[_activeLegIndex] : null;
@@ -409,15 +389,11 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     );
   }
 
-  // ══════════════════════════════════════════
-  // رأس البحث
-  // ══════════════════════════════════════════
   Widget _buildSearchHeader(bool isDark) {
     return Container(
       padding: const EdgeInsets.all(16),
       color: Theme.of(context).cardColor,
       child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        // موقعك
         Row(textDirection: TextDirection.rtl, children: [
           Container(
             width: 32, height: 32,
@@ -437,7 +413,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
           ),
         ]),
         const SizedBox(height: 12),
-        // حقل البحث
         Row(textDirection: TextDirection.rtl, children: [
           Container(
             width: 32, height: 32,
@@ -470,7 +445,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
             ),
           ),
         ]),
-        // اقتراحات
         if (_suggestions.isNotEmpty)
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 230),
@@ -537,9 +511,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     );
   }
 
-  // ══════════════════════════════════════════
-  // شاشة فارغة
-  // ══════════════════════════════════════════
   Widget _buildEmpty() => Center(
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       Icon(Icons.route, size: 72, color: AppColors.primary.withOpacity(0.15)),
@@ -557,9 +528,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     ]),
   );
 
-  // ══════════════════════════════════════════
-  // النتائج
-  // ══════════════════════════════════════════
+  
   Widget _buildResults(bool isDark) {
     final plans = List<Map<String, dynamic>>.from(_result?['plans'] ?? []);
     final isGeocoded = _result?['geocoded'] == true;
@@ -584,7 +553,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     }
 
     return Column(children: [
-      // بانر بحث بمنطقة
       if (isGeocoded)
         Container(
           width: double.infinity,
@@ -607,7 +575,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
           ]),
         ),
 
-      // رأس الاقتراحات
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
         child: Row(textDirection: TextDirection.rtl, children: [
@@ -630,9 +597,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     ]);
   }
 
-  // ══════════════════════════════════════════
-  // كارد الخطة
-  // ══════════════════════════════════════════
   Widget _buildPlanCard(Map<String, dynamic> plan, int index, bool isDark) {
     final isDirect = plan['type'] == 'direct';
     final tag = plan['tag'] ?? '';
@@ -643,7 +607,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     final fromLat = _toDouble(plan['from_station_lat']);
     final fromLng = _toDouble(plan['from_station_lng']);
 
-    // ── تصميم الوسم ──
     final isFastest = tag == 'fastest';
     final tagColor = isFastest ? const Color(0xFF1565C0) : const Color(0xFFE65100);
     final tagBg = isFastest
@@ -655,7 +618,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
         ? 'أقل وقت — قد يشمل مشياً أكثر'
         : 'أقل مشي وجهد — حتى لو  كان الوقت أطول';
 
-    // هل الرحلة دي نشطة؟
     final isThisActive = _isTripActive &&
         _activePlan != null &&
         (_activePlan!['total_minutes'] == plan['total_minutes'] &&
@@ -683,7 +645,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
         ],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        // ── رأس الكارد ──
         Container(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           decoration: BoxDecoration(
@@ -692,7 +653,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Row(textDirection: TextDirection.rtl, children: [
-              // وسم النوع (مباشرة / تحويل)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -705,7 +665,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
                 ),
               ),
               const Spacer(),
-              // الوقت الكلي
               Row(children: [
                 Text(
                   '$totalMin',
@@ -720,7 +679,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
               ]),
             ]),
             const SizedBox(height: 8),
-            // وسم الاقتراح
             Row(textDirection: TextDirection.rtl, children: [
               Icon(tagIcon, size: 16, color: tagColor),
               const SizedBox(width: 6),
@@ -738,7 +696,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
               ),
             ]),
             const SizedBox(height: 6),
-            // إحصائيات سريعة
             Row(textDirection: TextDirection.rtl, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               _statChip(
                 icon: Icons.directions_walk,
@@ -760,7 +717,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
           ]),
         ),
 
-        // ── مشي للموقف + زر وجّهني ──
         if (walkToStation > 50)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
@@ -781,14 +737,12 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
             ]),
           ),
 
-        // ── الخطوات ──
         const Padding(
           padding: EdgeInsets.fromLTRB(14, 10, 14, 0),
           child: Divider(height: 1),
         ),
         ...legs.asMap().entries.map((e) => _buildLeg(e.value, e.key, legs.length, isDark, isThisActive)),
 
-        // ── زر ابدأ / إيقاف ──
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
           child: SizedBox(
@@ -823,7 +777,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     );
   }
 
-  // ── إحصائية صغيرة ──
   Widget _statChip({required IconData icon, required String label, required Color color}) {
     return Row(children: [
       Icon(icon, size: 13, color: color),
@@ -832,7 +785,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     ]);
   }
 
-  // ── زر التوجيه ──
   Widget _navButton({required String label, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
@@ -851,9 +803,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     );
   }
 
-  // ══════════════════════════════════════════
-  // خطوة واحدة في الرحلة
-  // ══════════════════════════════════════════
   Widget _buildLeg(
     Map<String, dynamic> leg,
     int legIdx,
@@ -875,7 +824,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     final fromLatLeg = _toDouble(leg['from_lat']);
     final fromLngLeg = _toDouble(leg['from_lng']);
 
-    // الخطوة النشطة (فقط لما الرحلة شغّالة)
     final isActive = isTripActive && legIdx == _activeLegIndex;
     final isPast = isTripActive && legIdx < _activeLegIndex;
 
@@ -887,7 +835,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
       child: Row(textDirection: TextDirection.rtl, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // أيقونة + خط عمودي
         Column(children: [
           Container(
             width: 36, height: 36,
@@ -909,10 +856,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
         ]),
         const SizedBox(width: 12),
 
-        // محتوى الخطوة
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            // عنوان + وسم "حالياً"
             Row(textDirection: TextDirection.rtl, children: [
               Expanded(
                 child: Text(
@@ -938,7 +883,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
             ]),
             const SizedBox(height: 4),
 
-            // تفاصيل الباص
             if (!isWalk) ...[
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -990,7 +934,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
                 ),
             ],
 
-            // تفاصيل المشي
             if (isWalk) ...[
               Text(
                 'من $from ← $to',

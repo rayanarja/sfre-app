@@ -56,7 +56,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (confirmed == true) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
-      // أعد تحميل التفضيلات (تصير default)
       await ref.read(appProvider).loadPreferences();
       if (!mounted) return;
       context.go('/login');
@@ -79,11 +78,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // معلومات المستخدم
             if (_user != null) _buildUserCard(dark),
             const SizedBox(height: 20),
 
-            // المظهر
             _sectionTitle(l.t('appearance'), Icons.palette_outlined, dark),
             const SizedBox(height: 8),
             _card(dark, children: [
@@ -103,7 +100,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
             const SizedBox(height: 16),
 
-            // اللغة
             _sectionTitle(l.t('language'), Icons.language, dark),
             const SizedBox(height: 8),
             _card(dark, children: [
@@ -132,7 +128,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
             const SizedBox(height: 16),
 
-            // الحساب
             _sectionTitle(l.t('account'), Icons.person_outline, dark),
             const SizedBox(height: 8),
             _card(dark, children: [

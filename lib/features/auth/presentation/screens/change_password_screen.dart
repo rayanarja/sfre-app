@@ -32,10 +32,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       final prefs = await SharedPreferences.getInstance();
       final api = ApiClient();
 
-      // تحقق إذا نقطة بيع أو مستخدم عادي
       final posJson = prefs.getString('pos_data');
       if (posJson != null) {
-        // نقطة بيع
         final pos = jsonDecode(posJson);
         await api.dio.post('/pos/change-password', data: {
           'pos_id': pos['id'],
@@ -52,7 +50,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         if (!mounted) return;
         context.go('/pos');
       } else {
-        // مستخدم عادي (سائق)
         final userJson = prefs.getString('user_data');
         if (userJson == null) throw Exception('مو مسجل دخول');
         final user = jsonDecode(userJson);
@@ -115,7 +112,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'لازم تغيّر كلمة المرور المؤقتة يلي أعطاك ياها الأدمن',
+                  'يجب ان تغيّر كلمة المرور المؤقتة التي أعطاها لك  المدير',
                   style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
                   textAlign: TextAlign.center,
                 ),
@@ -170,7 +167,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     ),
                   ),
                   validator: (v) {
-                    if (v != _newPasswordController.text) return 'كلمات المرور مو متطابقة';
+                    if (v != _newPasswordController.text) return 'كلمات المرور غير متطابقة';
                     return null;
                   },
                 ),

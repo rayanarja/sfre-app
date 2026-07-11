@@ -129,7 +129,6 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // Header — رقم الباص + التاريخ
           Row(
             textDirection: TextDirection.rtl,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -212,7 +211,6 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
             ),
           ],
 
-          // حالة الرحلة
           if (exitedAt == null) ...[
             const SizedBox(height: 8),
             Container(

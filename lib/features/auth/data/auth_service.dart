@@ -7,7 +7,6 @@ import '../../../shared/models/user_model.dart';
 class AuthService {
   final _api = ApiClient();
 
-  // تسجيل دخول بالإيميل (راكب)
   Future<UserModel> login(String email, String password) async {
     try {
       final response = await _api.dio.post(
@@ -29,7 +28,6 @@ class AuthService {
     }
   }
 
-  // تسجيل دخول برقم الهاتف (سائق)
   Future<UserModel> loginByPhone(String phone, String password) async {
     try {
       final response = await _api.dio.post(
@@ -45,7 +43,6 @@ class AuthService {
       await prefs.setString(AppConstants.userKey, jsonEncode(response.data['user']));
       await prefs.setString(AppConstants.roleKey, user.role);
 
-      // حفظ بيانات السائق
       if (response.data['driver'] != null) {
         await prefs.setString('driver_data', jsonEncode(response.data['driver']));
       }
@@ -56,7 +53,6 @@ class AuthService {
     }
   }
 
-  // تسجيل حساب جديد (راكب)
   Future<UserModel> register({
     required String username,
     required String email,
@@ -83,7 +79,6 @@ class AuthService {
     }
   }
 
-  // تسجيل خروج
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(AppConstants.tokenKey);
@@ -92,7 +87,6 @@ class AuthService {
     await prefs.remove('driver_data');
   }
 
-  // جيب المستخدم المحفوظ
   Future<UserModel?> getSavedUser() async {
     final prefs = await SharedPreferences.getInstance();
     final userJson = prefs.getString(AppConstants.userKey);
@@ -100,7 +94,6 @@ class AuthService {
     return UserModel.fromJson(jsonDecode(userJson));
   }
 
-  // هل في توكن محفوظ؟
   Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(AppConstants.tokenKey) != null;

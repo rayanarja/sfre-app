@@ -157,7 +157,6 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    // زر تنبيهني للمحطة الأقرب
                     if (_nearestStation!['latitude'] != null)
                       SizedBox(
                         width: double.infinity,
@@ -236,7 +235,6 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
               const SizedBox(height: 24),
             ],
 
-            // كل المحطات
             const Text(
               '🗺️ محطات الخط',
               style: TextStyle(
