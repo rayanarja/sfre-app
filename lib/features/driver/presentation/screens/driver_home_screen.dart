@@ -30,6 +30,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Timer? _notifTimer;
   int _unreadNotifs = 0;
   int _lastNotifCount = 0;
+  List<Map<String, dynamic>> _routeStations = [];
+  String _busDirection = 'outbound';
+  static const double _terminalSwitchRadiusMeters = 120;
 
   @override
   void initState() {
@@ -79,6 +82,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         _shifts = List<Map<String, dynamic>>.from(driver['shifts'] ?? []);
         if (_shifts.isNotEmpty && _shifts[0]['bus'] != null) {
           _currentBus = _shifts[0]['bus'];
+          _busDirection = _normalizeDirection(_currentBus!['direction']) ?? _busDirection;
         }
       });
     }
@@ -113,6 +117,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           _shifts = shifts;
           if (shifts.isNotEmpty && shifts[0]['bus'] != null) {
             _currentBus = shifts[0]['bus'];
+            _busDirection = _normalizeDirection(_currentBus!['direction']) ?? _busDirection;
           }
           _isLoading = false;
         });
@@ -147,6 +152,114 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }*/    
 
 
+  String? _normalizeDirection(dynamic value) {
+    final text = value?.toString().trim().toLowerCase();
+    if (text == null || text.isEmpty) return null;
+    if (text == 'outbound' || text == 'forward' || text == 'go' || text == 'ذهاب') {
+      return 'outbound';
+    }
+    if (text == 'inbound' || text == 'return' || text == 'back' || text == 'إياب' || text == 'اياب') {
+      return 'inbound';
+    }
+    return null;
+  }
+
+  int _stationOrder(Map<String, dynamic> station, int fallback) {
+    final value = station['station_order'] ??
+        station['order'] ??
+        station['sequence'] ??
+        station['index'] ??
+        station['current_station_index'];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? fallback;
+    return fallback;
+  }
+
+  double? _toDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  Future<List<Map<String, dynamic>>> _getRouteStations(ApiClient api) async {
+    if (_routeStations.isNotEmpty) return _routeStations;
+
+    final routeId = _currentBus?['route_id'] ?? _currentBus?['route']?['route_id'];
+    if (routeId == null) return [];
+
+    try {
+      final response = await api.dio.get('/bus-tracker/stations/$routeId');
+      final stations = List<Map<String, dynamic>>.from(response.data)
+          .where((station) =>
+              _toDouble(station['lat'] ?? station['latitude']) != null &&
+              _toDouble(station['lng'] ?? station['longitude']) != null)
+          .toList();
+      for (var i = 0; i < stations.length; i++) {
+        stations[i]['_sort_index'] = i;
+      }
+      stations.sort((a, b) =>
+          _stationOrder(a, a['_sort_index'] as int).compareTo(_stationOrder(b, b['_sort_index'] as int)));
+      _routeStations = stations;
+    } catch (e) {
+      debugPrint('[_getRouteStations] ERROR: $e');
+    }
+
+    return _routeStations;
+  }
+
+  int? _nearestStationIndex(
+    List<Map<String, dynamic>> stations,
+    double lat,
+    double lng,
+  ) {
+    if (stations.isEmpty) return null;
+
+    var nearestIndex = 0;
+    var nearestDistance = double.infinity;
+    for (var i = 0; i < stations.length; i++) {
+      final stationLat = _toDouble(stations[i]['lat'] ?? stations[i]['latitude']);
+      final stationLng = _toDouble(stations[i]['lng'] ?? stations[i]['longitude']);
+      if (stationLat == null || stationLng == null) continue;
+
+      final distance = Geolocator.distanceBetween(lat, lng, stationLat, stationLng);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = i;
+      }
+    }
+
+    return nearestIndex;
+  }
+
+  String _directionForPosition(
+    List<Map<String, dynamic>> stations,
+    int? nearestIndex,
+    double lat,
+    double lng,
+  ) {
+    if (nearestIndex == null || stations.length < 2) return _busDirection;
+
+    final station = stations[nearestIndex];
+    final stationLat = _toDouble(station['lat'] ?? station['latitude']);
+    final stationLng = _toDouble(station['lng'] ?? station['longitude']);
+    if (stationLat == null || stationLng == null) return _busDirection;
+
+    final distance = Geolocator.distanceBetween(lat, lng, stationLat, stationLng);
+    if (distance > _terminalSwitchRadiusMeters) return _busDirection;
+
+    if (_busDirection == 'outbound' && nearestIndex == stations.length - 1) {
+      return 'inbound';
+    }
+    if (_busDirection == 'inbound' && nearestIndex == 0) {
+      return 'outbound';
+    }
+
+    return _busDirection;
+  }
+
 
 
 Future<void> _sendLocation() async {
@@ -179,20 +292,73 @@ Future<void> _sendLocation() async {
 
     final api = ApiClient();
     final endpoint = '/bus-tracker/position/$busId';
+    final stations = await _getRouteStations(api);
+    final nearestStationIndex = _nearestStationIndex(
+      stations,
+      position.latitude,
+      position.longitude,
+    );
+    final nextDirection = _directionForPosition(
+      stations,
+      nearestStationIndex,
+      position.latitude,
+      position.longitude,
+    );
+    final switchedDirection = nextDirection != _busDirection;
+    _busDirection = nextDirection;
+    _currentBus!['direction'] = _busDirection;
+    if (nearestStationIndex != null) {
+      _currentBus!['current_station_index'] = nearestStationIndex;
+    }
 
     debugPrint('[_sendLocation] PUT $endpoint');
     debugPrint(
       '[_sendLocation] Payload: '
-      '{lat: ${position.latitude}, lng: ${position.longitude}}',
+      '{lat: ${position.latitude}, lng: ${position.longitude}, '
+      'direction: $_busDirection, current_station_index: $nearestStationIndex}',
     );
 
-    final response = await api.dio.put(
-      endpoint,
-      data: {
-        'lat': position.latitude,
-        'lng': position.longitude,
-      },
-    );
+    dynamic response;
+    var usedLegacyPositionPayload = false;
+    try {
+      response = await api.dio.put(
+        endpoint,
+        data: {
+          'lat': position.latitude,
+          'lng': position.longitude,
+          'direction': _busDirection,
+          if (nearestStationIndex != null) 'current_station_index': nearestStationIndex,
+        },
+      );
+    } catch (_) {
+      usedLegacyPositionPayload = true;
+      response = await api.dio.put(
+        endpoint,
+        data: {
+          'lat': position.latitude,
+          'lng': position.longitude,
+        },
+      );
+    }
+
+    if (switchedDirection || usedLegacyPositionPayload) {
+      await api.dio.put('/buses/$busId', data: {
+        'direction': _busDirection,
+        if (nearestStationIndex != null) 'current_station_index': nearestStationIndex,
+      });
+    }
+
+    if (switchedDirection) {
+      if (mounted) {
+        setState(() {});
+        _showSnack(
+          _busDirection == 'inbound'
+              ? 'تم تحويل اتجاه الباص تلقائياً إلى إياب'
+              : 'تم تحويل اتجاه الباص تلقائياً إلى ذهاب',
+          AppColors.success,
+        );
+      }
+    }
 
     debugPrint(
       '[_sendLocation] Success '

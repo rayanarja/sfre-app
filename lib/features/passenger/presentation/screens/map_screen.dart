@@ -121,6 +121,17 @@ class _MapScreenState extends State<MapScreen> {
     return value.toString();
   }
 
+  String _formatDirection(dynamic value) {
+    final text = value?.toString().trim().toLowerCase();
+    if (text == 'outbound' || text == 'forward' || text == 'go' || text == 'ذهاب') {
+      return 'ذهاب';
+    }
+    if (text == 'inbound' || text == 'return' || text == 'back' || text == 'إياب' || text == 'اياب') {
+      return 'إياب';
+    }
+    return _formatBusValue(value);
+  }
+
   void _showBusPopup(Map<String, dynamic> bus) {
     showModalBottomSheet(
       context: context,
@@ -190,7 +201,7 @@ class _MapScreenState extends State<MapScreen> {
             const SizedBox(height: 16),
             _busInfoRow('رقم الباص', bus['bus_id']),
             _busInfoRow('الحالة', bus['status']),
-            _busInfoRow('الاتجاه', bus['direction']),
+            _busInfoRow('الاتجاه', _formatDirection(bus['direction'] ?? bus['direction_ar'])),
             _busInfoRow('ترتيب المحطة الحالية', bus['current_station_index']),
             _busInfoRow('رقم الخط', bus['route_id']),
             _busInfoRow('آخر تحديث', bus['last_update']),

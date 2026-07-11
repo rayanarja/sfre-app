@@ -385,7 +385,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 ],
               ),
             ),
-            ...buses.take(3).map((bus) => _buildBusRow(bus)),
+            ...buses.take(3).map((bus) => _buildBusRow(bus, directionAr)),
             if (buses.length > 3)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -433,11 +433,31 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildBusRow(Map<String, dynamic> bus) {
+  String? _normalizeDirection(dynamic value) {
+    final text = value?.toString().trim().toLowerCase();
+    if (text == null || text.isEmpty) return null;
+    if (text == 'outbound' || text == 'forward' || text == 'go' || text == 'ذهاب') {
+      return 'outbound';
+    }
+    if (text == 'inbound' || text == 'return' || text == 'back' || text == 'إياب' || text == 'اياب') {
+      return 'inbound';
+    }
+    return null;
+  }
+
+  Widget _buildBusRow(Map<String, dynamic> bus, dynamic passengerDirection) {
     final isIdeal = bus['is_ideal'] == true;
     final minutes = bus['estimated_minutes'];
     final stationsAway = bus['stations_away'];
-    final distM = bus['distance_meters'] ?? 0;
+    final busDirection = _normalizeDirection(bus['direction'] ?? bus['direction_ar']);
+    final wantedDirection = _normalizeDirection(passengerDirection);
+    final sameDirection = busDirection != null && wantedDirection != null && busDirection == wantedDirection;
+    final hasStationsAway = stationsAway is num;
+    final isTowardPassenger = bus['is_towards_passenger'] == true ||
+        isIdeal ||
+        (sameDirection && (!hasStationsAway || stationsAway >= 0));
+    final directionLabel = isTowardPassenger ? 'جاي باتجاهك' : 'بعكس الاتجاه';
+    final directionColor = isTowardPassenger ? AppColors.success : AppColors.warning;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -473,6 +493,34 @@ class _SearchScreenState extends State<SearchScreen> {
               const SizedBox(width: 4),
               const Icon(Icons.check_circle, size: 14, color: AppColors.success),
             ],
+
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: directionColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isTowardPassenger ? Icons.call_received : Icons.swap_calls,
+                    size: 12,
+                    color: directionColor,
+                  ),
+                  const SizedBox(width: 3),
+                  Text(
+                    directionLabel,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: directionColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
             const Spacer(),
 
