@@ -18,6 +18,42 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
   Map<String, dynamic>? _nearestStation;
   bool _loadingLocation = true;
 
+  double? _toDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  String _stationName(Map<String, dynamic> station) =>
+      (station['name'] ?? station['station']?['name'] ?? '—').toString();
+
+  double? _stationLat(Map<String, dynamic> station) =>
+      _toDouble(station['lat'] ?? station['latitude'] ?? station['station']?['lat']);
+
+  double? _stationLng(Map<String, dynamic> station) =>
+      _toDouble(station['lng'] ?? station['longitude'] ?? station['station']?['lng']);
+
+  List<Map<String, dynamic>> _stationsForDirection(String direction) {
+    final list = widget.route[direction];
+    if (list is List) {
+      return List<Map<String, dynamic>>.from(list);
+    }
+    return [];
+  }
+
+  List<Map<String, dynamic>> _allStations() {
+    final legacy = widget.route['stations'];
+    if (legacy is List && legacy.isNotEmpty) {
+      return List<Map<String, dynamic>>.from(legacy);
+    }
+    return [
+      ..._stationsForDirection('outbound'),
+      ..._stationsForDirection('inbound'),
+    ];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -38,18 +74,20 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
 
       setState(() => _currentPosition = position);
 
-      final stations = (widget.route['stations'] as List?) ?? [];
+      final stations = _allStations();
       Map<String, dynamic>? nearest;
       double minDistance = double.infinity;
 
       for (final station in stations) {
-        if (station['latitude'] == null || station['longitude'] == null) continue;
+        final lat = _stationLat(station);
+        final lng = _stationLng(station);
+        if (lat == null || lng == null) continue;
 
         final distance = Geolocator.distanceBetween(
           position.latitude,
           position.longitude,
-          station['latitude'],
-          station['longitude'],
+          lat,
+          lng,
         );
 
         if (distance < minDistance) {
@@ -74,7 +112,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final stations = (widget.route['stations'] as List?) ?? [];
+    final stations = _allStations();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -147,7 +185,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
                           ),
                         ),
                         Text(
-                          _nearestStation!['name'] ?? '—',
+                          _stationName(_nearestStation!),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -157,14 +195,14 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    if (_nearestStation!['latitude'] != null)
+                    if (_stationLat(_nearestStation!) != null && _stationLng(_nearestStation!) != null)
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
                           onPressed: () async {
                             final isTracking = _notificationService.isTracking &&
                                 _notificationService.targetStation?['name'] ==
-                                    _nearestStation!['name'];
+                                    _stationName(_nearestStation!);
 
                             if (isTracking) {
                               _notificationService.stopTracking();
@@ -189,16 +227,16 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
                                 return;
                               }
                               _notificationService.startTracking({
-                                'name': _nearestStation!['name'],
-                                'latitude': _nearestStation!['latitude'],
-                                'longitude': _nearestStation!['longitude'],
+                                'name': _stationName(_nearestStation!),
+                                'lat': _stationLat(_nearestStation!),
+                                'lng': _stationLng(_nearestStation!),
                               });
                               setState(() {});
                               if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                      '✅   سيصلك تنبيه عندما  تقترب من ${_nearestStation!['name']}'),
+                                      '✅   سيصلك تنبيه عندما  تقترب من ${_stationName(_nearestStation!)}'),
                                   backgroundColor: AppColors.success,
                                   behavior: SnackBarBehavior.floating,
                                 ),
@@ -208,7 +246,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
                           icon: Icon(
                             _notificationService.isTracking &&
                                     _notificationService.targetStation?['name'] ==
-                                        _nearestStation!['name']
+                                        _stationName(_nearestStation!)
                                 ? Icons.notifications_active
                                 : Icons.notifications_outlined,
                             size: 18,
@@ -216,14 +254,14 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
                           label: Text(
                             _notificationService.isTracking &&
                                     _notificationService.targetStation?['name'] ==
-                                        _nearestStation!['name']
+                                        _stationName(_nearestStation!)
                                 ? 'جاري التتبع — اضغط للإلغاء'
                                 : 'تنبيهني عند الوصول للموقف',
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _notificationService.isTracking &&
                                     _notificationService.targetStation?['name'] ==
-                                        _nearestStation!['name']
+                                        _stationName(_nearestStation!)
                                 ? AppColors.success
                                 : AppColors.primary,
                           ),
@@ -255,7 +293,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
 
             ...stations.map((station) {
               final isNearest = _nearestStation != null &&
-                  _nearestStation!['name'] == station['name'];
+                  _stationName(_nearestStation!) == _stationName(station);
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
@@ -287,7 +325,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        station['name'] ?? '—',
+                        _stationName(station),
                         style: TextStyle(
                           fontWeight: isNearest
                               ? FontWeight.bold

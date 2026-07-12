@@ -30,7 +30,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Timer? _notifTimer;
   int _unreadNotifs = 0;
   int _lastNotifCount = 0;
-  List<Map<String, dynamic>> _routeStations = [];
+  final Map<String, List<Map<String, dynamic>>> _routeStationsByDirection = {};
   String _busDirection = 'outbound';
   static const double _terminalSwitchRadiusMeters = 120;
 
@@ -170,30 +170,43 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     return null;
   }
 
+  double? _stationLat(Map<String, dynamic> station) =>
+      _toDouble(station['lat'] ?? station['latitude'] ?? station['station']?['lat']);
+
+  double? _stationLng(Map<String, dynamic> station) =>
+      _toDouble(station['lng'] ?? station['longitude'] ?? station['station']?['lng']);
+
+  int _stationIndex(Map<String, dynamic> station, int fallback) =>
+      _stationOrder(station, fallback);
+
   Future<List<Map<String, dynamic>>> _getRouteStations(ApiClient api) async {
-    if (_routeStations.isNotEmpty) return _routeStations;
+    final cached = _routeStationsByDirection[_busDirection];
+    if (cached != null) return cached;
 
     final routeId = _currentBus?['route_id'] ?? _currentBus?['route']?['route_id'];
     if (routeId == null) return [];
 
     try {
-      final response = await api.dio.get('/bus-tracker/stations/$routeId');
+      final response = await api.dio.get(
+        '/bus-tracker/stations/$routeId',
+        queryParameters: {'direction': _busDirection},
+      );
       final stations = List<Map<String, dynamic>>.from(response.data)
           .where((station) =>
-              _toDouble(station['lat'] ?? station['latitude']) != null &&
-              _toDouble(station['lng'] ?? station['longitude']) != null)
+              _stationLat(station) != null &&
+              _stationLng(station) != null)
           .toList();
       for (var i = 0; i < stations.length; i++) {
-        stations[i]['_sort_index'] = i;
+        stations[i]['_sort_index'] = i + 1;
       }
       stations.sort((a, b) =>
           _stationOrder(a, a['_sort_index'] as int).compareTo(_stationOrder(b, b['_sort_index'] as int)));
-      _routeStations = stations;
+      _routeStationsByDirection[_busDirection] = stations;
     } catch (e) {
       debugPrint('[_getRouteStations] ERROR: $e');
     }
 
-    return _routeStations;
+    return _routeStationsByDirection[_busDirection] ?? [];
   }
 
   int? _nearestStationIndex(
@@ -206,8 +219,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     var nearestIndex = 0;
     var nearestDistance = double.infinity;
     for (var i = 0; i < stations.length; i++) {
-      final stationLat = _toDouble(stations[i]['lat'] ?? stations[i]['latitude']);
-      final stationLng = _toDouble(stations[i]['lng'] ?? stations[i]['longitude']);
+      final stationLat = _stationLat(stations[i]);
+      final stationLng = _stationLng(stations[i]);
       if (stationLat == null || stationLng == null) continue;
 
       final distance = Geolocator.distanceBetween(lat, lng, stationLat, stationLng);
@@ -229,8 +242,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (nearestIndex == null || stations.length < 2) return _busDirection;
 
     final station = stations[nearestIndex];
-    final stationLat = _toDouble(station['lat'] ?? station['latitude']);
-    final stationLng = _toDouble(station['lng'] ?? station['longitude']);
+    final stationLat = _stationLat(station);
+    final stationLng = _stationLng(station);
     if (stationLat == null || stationLng == null) return _busDirection;
 
     final distance = Geolocator.distanceBetween(lat, lng, stationLat, stationLng);
@@ -292,16 +305,21 @@ Future<void> _sendLocation() async {
     );
     final switchedDirection = nextDirection != _busDirection;
     _busDirection = nextDirection;
+    final currentStationIndex = switchedDirection
+        ? 1
+        : nearestStationIndex == null
+            ? null
+            : _stationIndex(stations[nearestStationIndex], nearestStationIndex + 1);
     _currentBus!['direction'] = _busDirection;
-    if (nearestStationIndex != null) {
-      _currentBus!['current_station_index'] = nearestStationIndex;
+    if (currentStationIndex != null) {
+      _currentBus!['current_station_index'] = currentStationIndex;
     }
 
     debugPrint('[_sendLocation] PUT $endpoint');
     debugPrint(
       '[_sendLocation] Payload: '
       '{lat: ${position.latitude}, lng: ${position.longitude}, '
-      'direction: $_busDirection, current_station_index: $nearestStationIndex}',
+      'direction: $_busDirection, current_station_index: $currentStationIndex}',
     );
 
     dynamic response;
@@ -313,7 +331,7 @@ Future<void> _sendLocation() async {
           'lat': position.latitude,
           'lng': position.longitude,
           'direction': _busDirection,
-          if (nearestStationIndex != null) 'current_station_index': nearestStationIndex,
+          if (currentStationIndex != null) 'current_station_index': currentStationIndex,
         },
       );
     } catch (_) {
@@ -330,7 +348,7 @@ Future<void> _sendLocation() async {
     if (switchedDirection || usedLegacyPositionPayload) {
       await api.dio.put('/buses/$busId', data: {
         'direction': _busDirection,
-        if (nearestStationIndex != null) 'current_station_index': nearestStationIndex,
+        if (currentStationIndex != null) 'current_station_index': currentStationIndex,
       });
     }
 

@@ -108,14 +108,22 @@ class _SearchScreenState extends State<SearchScreen> {
 
     try {
       final api = ApiClient();
-      final stationsRes = await api.dio.get('/bus-tracker/stations/${route['route_id']}');
+      final direction = _normalizeDirection(route['passenger_direction'] ?? route['passenger_direction_ar']);
+      final stationsRes = await api.dio.get(
+        '/bus-tracker/stations/${route['route_id']}',
+        queryParameters: {
+          if (direction != null) 'direction': direction,
+        },
+      );
       final stations = List<Map<String, dynamic>>.from(stationsRes.data);
-      final station = stations.firstWhere((s) => s['name'] == stationName, orElse: () => {});
-      if (station.isNotEmpty && station['lat'] != null && station['lng'] != null) {
+      final station = stations.firstWhere((s) => _stationName(s) == stationName, orElse: () => {});
+      final lat = _stationLat(station);
+      final lng = _stationLng(station);
+      if (station.isNotEmpty && lat != null && lng != null) {
         _notificationService.startTracking({
           'name': stationName,
-          'lat': station['lat'],
-          'lng': station['lng'],
+          'lat': lat,
+          'lng': lng,
         });
         setState(() {});
         if (mounted) _showSnack('✅ سيصلك  تنبيه عندما تقترب من $stationName', AppColors.success);
@@ -462,6 +470,20 @@ class _SearchScreenState extends State<SearchScreen> {
     if (value is String) return num.tryParse(value);
     return null;
   }
+
+  double? _toDouble(dynamic value) {
+    final number = _toNum(value);
+    return number?.toDouble();
+  }
+
+  String? _stationName(Map<String, dynamic> station) =>
+      (station['name'] ?? station['station']?['name'])?.toString();
+
+  double? _stationLat(Map<String, dynamic> station) =>
+      _toDouble(station['lat'] ?? station['latitude'] ?? station['station']?['lat']);
+
+  double? _stationLng(Map<String, dynamic> station) =>
+      _toDouble(station['lng'] ?? station['longitude'] ?? station['station']?['lng']);
 
   int _estimateArrivalMinutes(Map<String, dynamic> bus) {
     final stationsAway = _toNum(bus['stations_away']);

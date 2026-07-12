@@ -41,6 +41,15 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     });
   }
 
+  int _routeStationsCount(Map<String, dynamic> route) {
+    final legacy = route['stations'];
+    if (legacy is List) return legacy.length;
+    final outbound = route['outbound'];
+    final inbound = route['inbound'];
+    return (outbound is List ? outbound.length : 0) +
+        (inbound is List ? inbound.length : 0);
+  }
+
   Future<void> _search(String query) async {
     setState(() {
       _isLoading = true;
@@ -59,7 +68,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         if (route != null) {
           final routeId = route['route_id'] as int;
           if (!routesMap.containsKey(routeId)) {
-            final stationsCount = (route['stations'] as List?)?.length ?? 0;
+            final stationsCount = _routeStationsCount(route);
             routesMap[routeId] = {
               ...route,
               'matched_station': station['name'],
