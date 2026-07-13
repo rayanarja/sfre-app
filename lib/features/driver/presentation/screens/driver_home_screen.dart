@@ -28,6 +28,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   bool _isOnline = false;
   Timer? _locationTimer;
   Timer? _notifTimer;
+  Timer? _shiftTimer;
   int _unreadNotifs = 0;
   int _lastNotifCount = 0;
   final Map<String, List<Map<String, dynamic>>> _routeStationsByDirection = {};
@@ -40,11 +41,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     NotificationService().init();
     _loadData();
     _startNotifPolling();
+    _startShiftPolling();
   }
 
   void _startNotifPolling() {
     _notifTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (_user != null) _checkNotifications(_user!.id);
+    });
+  }
+
+  void _startShiftPolling() {
+    _shiftTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (_user != null) _fetchDriverData();
     });
   }
 
@@ -106,9 +114,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
       if (myDriver.isNotEmpty) {
         final shifts = List<Map<String, dynamic>>.from(myDriver['shifts'] ?? []);
-        
+
         final hasActiveShift = shifts.any((s) => 
           s['status'] == 'active' || s['status'] == 'pending_stop');
+
+        Map<String, dynamic>? busToDeactivate;
+        if (myDriver['status'] == 'online' && !hasActiveShift) {
+          for (final shift in shifts) {
+            final bus = shift['bus'];
+            if (bus is Map && bus['current_status'] == 'active') {
+              busToDeactivate = Map<String, dynamic>.from(bus);
+              break;
+            }
+          }
+
+          if (busToDeactivate == null &&
+              _currentBus?['current_status'] == 'active') {
+            busToDeactivate = Map<String, dynamic>.from(_currentBus!);
+          }
+        }
         
         setState(() {
           _driverData = myDriver;
@@ -125,6 +149,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           try {
             final api = ApiClient();
             await api.dio.put('/drivers/${myDriver['driver_id']}', data: {'status': 'offline'});
+            if (busToDeactivate != null) {
+              await api.dio.put(
+                '/buses/${busToDeactivate['bus_id']}',
+                data: {'current_status': 'inactive'},
+              );
+              if (_currentBus?['bus_id'] == busToDeactivate['bus_id'] && mounted) {
+                setState(() => _currentBus!['current_status'] = 'inactive');
+              }
+            }
           } catch (_) {}
         }
       } else {
@@ -846,6 +879,7 @@ Future<void> _sendLocation() async {
   void dispose() {
     _locationTimer?.cancel();
     _notifTimer?.cancel();
+    _shiftTimer?.cancel();
     super.dispose();
   }
 }
