@@ -3,9 +3,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/network/api_client.dart';
-import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/services/notification_service.dart';
+import '../../data/route_suggestions_service.dart';
 
 // ═══════════════════════════════════════════════════════
 // RoutePlannerScreen — خطط رحلتك
@@ -25,6 +24,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
   Position? _position;
   List<Map<String, dynamic>> _suggestions = [];
   Timer? _debounce;
+  final RouteSuggestionsService _routeService = RouteSuggestionsService();
 
   // ── حالة الرحلة النشطة
   bool _isTripActive = false;
@@ -77,20 +77,9 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
         return;
       }
       try {
-        final res = await ApiClient().dio.get(
-          '/stations/hybrid-suggestions',
-          queryParameters: {'q': text.trim()},
-        );
+        final data = await _routeService.searchDestinations(text.trim());
         if (!mounted) return;
-        final data = res.data;
-        if (data is List) {
-          setState(() {
-            _suggestions = data.map<Map<String, dynamic>>((item) {
-              if (item is String) return {'name': item, 'type': 'station'};
-              return Map<String, dynamic>.from(item);
-            }).toList();
-          });
-        }
+        setState(() => _suggestions = data);
       } catch (_) {}
     });
   }
@@ -112,20 +101,23 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     });
     FocusScope.of(context).unfocus();
     try {
-      final params = <String, dynamic>{
-        'destination': q,
-        'lat': _position!.latitude,
-        'lng': _position!.longitude,
-      };
-      if (destLat != null && destLng != null) {
-        params['dest_lat'] = destLat;
-        params['dest_lng'] = destLng;
+      final suggestions = destLat != null && destLng != null
+          ? await _routeService.suggestionsForCoordinates(
+              userLat: _position!.latitude,
+              userLng: _position!.longitude,
+              destinationLat: destLat,
+              destinationLng: destLng,
+            )
+          : await _routeService.planForText(
+              destination: q,
+              userLat: _position!.latitude,
+              userLng: _position!.longitude,
+            );
+      if (mounted) {
+        setState(() => _result = {
+              'plans': suggestions.map((item) => item.toViewMap()).toList(),
+            });
       }
-      final res = await ApiClient().dio.get(
-        '/stations/plan-route-v2',
-        queryParameters: params,
-      );
-      if (mounted) setState(() => _result = Map<String, dynamic>.from(res.data));
     } catch (_) {
       _snack('حدث خطأ، حاول مرة ثانية', Colors.red);
     }
@@ -363,7 +355,9 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
                   currentLeg != null
                       ? (currentLeg['action'] == 'walk'
                           ? 'امشِ نحو: ${currentLeg['to'] ?? ''}'
-                          : 'اركب خط: ${_cleanRoute(currentLeg['route_name'])} باتجاه ${currentLeg['to'] ?? ''}')
+                          : currentLeg['action'] == 'wait'
+                              ? 'انتظر الباص لمدة ${currentLeg['minutes'] ?? 0} دقائق'
+                              : 'اركب خط: ${_cleanRoute(currentLeg['route_name'])} باتجاه ${currentLeg['to'] ?? ''}')
                       : '✅ وصلت لوجهتك!',
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                   overflow: TextOverflow.ellipsis,
@@ -469,8 +463,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
                       setState(() => _suggestions = []);
                       _search(
                         override: name,
-                        destLat: isPlace ? placeLat : null,
-                        destLng: isPlace ? placeLng : null,
+                        destLat: placeLat,
+                        destLng: placeLng,
                       );
                     },
                     child: Container(
@@ -598,30 +592,40 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
   }
 
   Widget _buildPlanCard(Map<String, dynamic> plan, int index, bool isDark) {
-    final isDirect = plan['type'] == 'direct';
+    final isDirect = (plan['transit_type'] ?? plan['type']) == 'direct';
+    final requiresWalking = plan['type'] == 'walking_required';
     final tag = plan['tag'] ?? '';
     final legs = List<Map<String, dynamic>>.from(plan['legs'] ?? []);
     final totalMin = plan['total_minutes'] ?? 0;
     final totalWalking = plan['total_walking'] ?? 0;
+    final walkingTime = plan['walking_time_minutes'] ?? 0;
     final walkToStation = plan['walk_to_station'] ?? 0;
+    final lastMileWalking = plan['last_mile_walking'] ?? 0;
+    final transferStopName = plan['transfer_stop_name'];
     final fromLat = _toDouble(plan['from_station_lat']);
     final fromLng = _toDouble(plan['from_station_lng']);
 
     final isFastest = tag == 'fastest';
-    final tagColor = isFastest ? const Color(0xFF1565C0) : const Color(0xFFE65100);
-    final tagBg = isFastest
-        ? (isDark ? const Color(0xFF0D2137) : const Color(0xFFE3F2FD))
-        : (isDark ? const Color(0xFF2D1600) : const Color(0xFFFFF3E0));
-    final tagIcon = isFastest ? Icons.bolt : Icons.self_improvement;
-    final tagTitle = isFastest ? '⚡ الأسرع' : '😌 الأريح';
-    final tagDesc = isFastest
-        ? 'أقل وقت — قد يشمل مشياً أكثر'
-        : 'أقل مشي وجهد — حتى لو  كان الوقت أطول';
+    final hasTag = tag == 'fastest' || tag == 'comfortable';
+    final tagColor = !hasTag
+        ? AppColors.primary
+        : (isFastest ? const Color(0xFF1565C0) : const Color(0xFFE65100));
+    final tagBg = !hasTag
+        ? AppColors.primary.withOpacity(isDark ? 0.16 : 0.08)
+        : isFastest
+            ? (isDark ? const Color(0xFF0D2137) : const Color(0xFFE3F2FD))
+            : (isDark ? const Color(0xFF2D1600) : const Color(0xFFFFF3E0));
+    final tagIcon = !hasTag
+        ? Icons.route
+        : (isFastest ? Icons.bolt : Icons.self_improvement);
+    final tagTitle = !hasTag ? 'خيار متاح' : (isFastest ? '⚡ الأسرع' : '😌 الأريح');
+    final tagDesc = !hasTag
+        ? 'تفاصيل الرحلة المقترحة'
+        : isFastest
+            ? 'أقل وقت — قد يشمل مشياً أكثر'
+            : 'أقل مشي وجهد — حتى لو  كان الوقت أطول';
 
-    final isThisActive = _isTripActive &&
-        _activePlan != null &&
-        (_activePlan!['total_minutes'] == plan['total_minutes'] &&
-            _activePlan!['type'] == plan['type']);
+    final isThisActive = _isTripActive && identical(_activePlan, plan);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -660,7 +664,9 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  isDirect ? '🟢 رحلة مباشرة' : '🔄 رحلة بتحويل',
+                  requiresWalking
+                      ? (isDirect ? '🚶 مباشرة مع مشي' : '🚶 تحويل مع مشي')
+                      : (isDirect ? '🟢 رحلة مباشرة' : '🔄 رحلة بتحويل'),
                   style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                 ),
               ),
@@ -699,7 +705,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
             Row(textDirection: TextDirection.rtl, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               _statChip(
                 icon: Icons.directions_walk,
-                label: 'مشي $totalWalking م',
+                label: 'مشي $totalWalking م • $walkingTime د',
                 color: AppColors.textSecondary,
               ),
               _statChip(
@@ -716,6 +722,33 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
             ]),
           ]),
         ),
+
+        if (requiresWalking)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.warning.withOpacity(0.35)),
+            ),
+            child: Text(
+              '⚠️ هذه الرحلة تتطلب المشي${lastMileWalking > 0 ? '، والمشي الأخير $lastMileWalking متر' : ''}.',
+              textDirection: TextDirection.rtl,
+              style: const TextStyle(color: AppColors.warning, fontWeight: FontWeight.w600),
+            ),
+          ),
+
+        if (!isDirect && transferStopName != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+            child: Row(textDirection: TextDirection.rtl, children: [
+              const Icon(Icons.swap_horiz, color: Color(0xFFF57C00)),
+              const SizedBox(width: 8),
+              Expanded(child: Text('موقف التحويل: $transferStopName')),
+            ]),
+          ),
 
         if (walkToStation > 50)
           Padding(
@@ -811,6 +844,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     bool isTripActive,
   ) {
     final isWalk = leg['action'] == 'walk';
+    final isWaiting = leg['action'] == 'wait';
     final from = leg['from'] ?? '—';
     final to = leg['to'] ?? '—';
     final routeName = _cleanRoute(leg['route_name']);
@@ -827,10 +861,12 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
     final isActive = isTripActive && legIdx == _activeLegIndex;
     final isPast = isTripActive && legIdx < _activeLegIndex;
 
-    final iconColor = isWalk ? const Color(0xFF1976D2) : AppColors.primary;
-    final iconBg = isWalk
-        ? const Color(0xFF1976D2).withOpacity(0.1)
-        : AppColors.primary.withOpacity(0.1);
+    final iconColor = isWaiting
+        ? AppColors.warning
+        : isWalk
+            ? const Color(0xFF1976D2)
+            : AppColors.primary;
+    final iconBg = iconColor.withOpacity(0.1);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
@@ -846,7 +882,11 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
               border: isActive ? Border.all(color: iconColor, width: 2) : null,
             ),
             child: Icon(
-              isWalk ? Icons.directions_walk : Icons.directions_bus,
+              isWaiting
+                  ? Icons.schedule
+                  : isWalk
+                      ? Icons.directions_walk
+                      : Icons.directions_bus,
               color: isActive ? Colors.white : (isPast ? Colors.grey : iconColor),
               size: 20,
             ),
@@ -861,7 +901,11 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
             Row(textDirection: TextDirection.rtl, children: [
               Expanded(
                 child: Text(
-                  isWalk ? 'امشِ للموقف' : 'اركب الباص',
+                  isWaiting
+                      ? 'انتظر الباص'
+                      : isWalk
+                          ? 'تابع سيراً على الأقدام'
+                          : 'اركب الباص',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
@@ -883,7 +927,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
             ]),
             const SizedBox(height: 4),
 
-            if (!isWalk) ...[
+            if (!isWalk && !isWaiting) ...[
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -954,6 +998,11 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen>
                   ),
                 ),
             ],
+            if (isWaiting)
+              Text(
+                '$minutes دقيقة انتظار',
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
             const SizedBox(height: 4),
           ]),
         ),
